@@ -7,10 +7,11 @@ import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .api import EudaApiClient
-from .const import CONF_EMAIL, CONF_PASSWORD
+from .const import CONF_EMAIL, CONF_PASSWORD, CONF_VIN, raw_unique_id
 from .coordinator import EudaCoordinator
 from .data import load_dictionary
 
@@ -45,6 +46,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EudaConfigEntry) -> bool
 
         entry.runtime_data = EudaRuntimeData(coordinator=coordinator, session=session)
 
+        # Migrate pre-0.1.3 raw sensor unique_ids (bare dataset key -> VIN_key)
+        # so they survive the namespacing fix that lets multiple vehicles work.
+        await _async_migrate_raw_unique_ids(hass, entry)
+
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
         # Entities now exist -> backfill historical statistics.
@@ -56,6 +61,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: EudaConfigEntry) -> bool
         raise
 
     return True
+
+
+async def _async_migrate_raw_unique_ids(hass: HomeAssistant, entry: EudaConfigEntry) -> None:
+    """Prefix legacy raw-sensor unique_ids (bare dataset key) with the VIN.
+
+    Curated sensors were always namespaced; only raw diagnostic sensors used the
+    bare key, which collides across vehicles. Renaming them in the registry
+    preserves the user's entity_ids/customisations across the fix.
+    """
+    vin = entry.data[CONF_VIN]
+    prefix = f"{vin}_"
+
+    @callback
+    def _migrate(reg_entry: er.RegistryEntry) -> dict | None:
+        if reg_entry.domain != "sensor":
+            return None
+        if reg_entry.unique_id.startswith(prefix):
+            return None  # already namespaced (curated, or already migrated)
+        return {"new_unique_id": raw_unique_id(vin, reg_entry.unique_id)}
+
+    await er.async_migrate_entries(hass, entry.entry_id, _migrate)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: EudaConfigEntry) -> bool:

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import EudaConfigEntry
+from .const import raw_unique_id
 from .coordinator import EudaCoordinator
 from .data import (
     CURATED_BINARY,
@@ -109,7 +110,9 @@ class EudaRawSensor(EudaEntity, SensorEntity):
         super().__init__(coordinator)
         dp = coordinator.data[key]
         self._key = key
-        self._attr_unique_id = key
+        # Namespace by VIN: dataset keys are shared across vehicles, so a bare
+        # key collides between config entries (see raw_unique_id / migration).
+        self._attr_unique_id = raw_unique_id(coordinator.vin, key)
         self._attr_name = friendly_name(dp.field_name, dp.description)
         # only attach a unit when the value is numeric
         if dp.unit and dp.type_hint in ("int", "float"):

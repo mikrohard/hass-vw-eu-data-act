@@ -36,6 +36,7 @@ def _load():
 
 def main() -> int:
     mods = _load()
+    const = mods["const"]
     data = mods["data"]
     api = mods["api"]
     failures: list[str] = []
@@ -124,6 +125,12 @@ def main() -> int:
     check("locked is curated", "locked" in data.CURATED_FIELDS, True)
     _mintemp = next(s for s in data.CURATED_SENSORS if s.field_name == "min_temperature")
     check("min_temperature named battery", _mintemp.name, "Battery min temperature")
+
+    # --- raw unique_id namespaced by VIN (multi-vehicle, issue #7) --------
+    print("raw unique_id namespacing:")
+    key = "1763a4fe-d8a6-3b8c-b095-70081f3e61c7"  # a key shared across vehicles
+    check("vin-prefixed", const.raw_unique_id("VINA", key), f"VINA_{key}")
+    check("distinct per vehicle", const.raw_unique_id("VINA", key) != const.raw_unique_id("VINB", key), True)
     present = {dp.field_name for dp in ds.points.values()}
     curated_present = present & data.CURATED_FIELDS
     raw_count = len(ds.points) - sum(

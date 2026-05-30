@@ -5,6 +5,16 @@ from datetime import timedelta
 
 DOMAIN = "vw_eu_data_act"
 
+
+def raw_unique_id(vin: str, key: str) -> str:
+    """Unique_id for a raw data-point sensor.
+
+    Dataset ``key`` UUIDs are shared across vehicles, so they must be namespaced
+    by VIN to avoid collisions between config entries (one entry's entity would
+    otherwise be dropped by the registry).
+    """
+    return f"{vin}_{key}"
+
 # --- Portal / OIDC endpoints ---------------------------------------------
 BASE_URL = "https://eu-data-act.drivesomethinggreater.com"
 IDENTITY_BASE = "https://identity.vwgroup.io"
