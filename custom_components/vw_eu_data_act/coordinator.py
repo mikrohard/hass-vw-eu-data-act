@@ -108,6 +108,15 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         except AuthError as err:
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except ApiError as err:
+            if "HTTP 400" in str(err):
+                # The data-delivery endpoint returns 400 until the portal has
+                # finished provisioning a newly enabled continuous data request,
+                # which can take a few hours. HA keeps retrying until it's ready.
+                raise UpdateFailed(
+                    "Data delivery not ready yet (HTTP 400). If you just enabled "
+                    "the continuous data request on the portal, it can take a few "
+                    "hours to start; will keep retrying."
+                ) from err
             raise UpdateFailed(str(err)) from err
 
         # content datasets, oldest -> newest by createdOn

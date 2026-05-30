@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from .api import EudaApiClient
 from .const import CONF_EMAIL, CONF_PASSWORD
 from .coordinator import EudaCoordinator
+from .data import load_dictionary
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
@@ -32,6 +33,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EudaConfigEntry) -> bool
     # its lifecycle and close it on unload.
     session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar())
     try:
+        # Warm the data-dictionary cache off the event loop (it reads a bundled
+        # JSON file) so it doesn't block the loop during dataset parsing.
+        await hass.async_add_executor_job(load_dictionary)
+
         client = EudaApiClient(session, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
         coordinator = EudaCoordinator(hass, entry, client)
 
