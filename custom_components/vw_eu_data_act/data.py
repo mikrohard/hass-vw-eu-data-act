@@ -282,8 +282,10 @@ CURATED_SENSORS: tuple[CuratedSensor, ...] = (
     CuratedSensor("battery_state_report.charge_bulk_threshold", "Charge bulk threshold", None, "%", "measurement", icon="mdi:battery-charging-100"),
     CuratedSensor("battery_state_report.charge_power", "Charge power", "power", "kW", "measurement"),
     CuratedSensor("mileage.value", "Mileage", "distance", "km", "total_increasing", icon="mdi:counter", unit_field="mileage.unit"),
-    CuratedSensor("min_temperature", "Climate min temperature", "temperature", "°C", "measurement"),
-    CuratedSensor("max_temperature", "Climate max temperature", "temperature", "°C", "measurement"),
+    # Per the data dictionary these are the HV battery module min/max temps,
+    # not climate setpoints.
+    CuratedSensor("min_temperature", "Battery min temperature", "temperature", "°C", "measurement"),
+    CuratedSensor("max_temperature", "Battery max temperature", "temperature", "°C", "measurement"),
     CuratedSensor("remaining_climate_time", "Remaining climate time", "duration", "s", "measurement", transform="duration_s"),
     CuratedSensor("range", "Range", "distance", "km", "measurement", icon="mdi:map-marker-distance"),
     CuratedSensor("scr_range", "SCR range", "distance", "km", "measurement", icon="mdi:map-marker-distance"),

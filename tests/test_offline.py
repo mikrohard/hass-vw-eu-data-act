@@ -122,6 +122,8 @@ def main() -> int:
     print("curated registry:")
     check("soc is curated", "battery_state_report.soc" in data.CURATED_FIELDS, True)
     check("locked is curated", "locked" in data.CURATED_FIELDS, True)
+    _mintemp = next(s for s in data.CURATED_SENSORS if s.field_name == "min_temperature")
+    check("min_temperature named battery", _mintemp.name, "Battery min temperature")
     present = {dp.field_name for dp in ds.points.values()}
     curated_present = present & data.CURATED_FIELDS
     raw_count = len(ds.points) - sum(
