@@ -49,12 +49,19 @@ _UNIT_CLASS: dict[str, str | None] = {
 
 
 def _filename_timestamp(name: str) -> datetime | None:
-    """Parse the leading YYYYMMDDhhmmss in a dataset filename."""
-    stem = name.split("_", 1)[0]
-    try:
-        return datetime.strptime(stem, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
+    """Parse a YYYYMMDDhhmmss segment from a dataset filename.
+
+    Handles both layouts seen in the wild ("TIMESTAMP_VIN.zip" and
+    "VIN_TIMESTAMP.zip") by scanning the underscore-separated parts
+    right-to-left for the first one that parses as a timestamp.
+    """
+    stem = name.rsplit(".", 1)[0]
+    for part in reversed(stem.split("_")):
+        try:
+            return datetime.strptime(part, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
 
 
 def _created_on(entry: dict) -> datetime | None:

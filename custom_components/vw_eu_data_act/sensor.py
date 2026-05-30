@@ -46,10 +46,15 @@ async def async_setup_entry(
 
 
 def _find_by_field(points: dict[str, DataPoint], field_name: str) -> DataPoint | None:
-    for dp in points.values():
-        if dp.field_name == field_name:
-            return dp
-    return None
+    """Pick a single point for a (possibly duplicated) field name.
+
+    The portal's flat array is unordered and a field can appear multiple times
+    under different UUIDs with conflicting values, with no way to tell which is
+    "live". Select the smallest UUID: arbitrary but stable, so the sensor tracks
+    the same data point across refreshes instead of flip-flopping on reshuffle.
+    """
+    matches = [dp for dp in points.values() if dp.field_name == field_name]
+    return min(matches, key=lambda dp: dp.key) if matches else None
 
 
 class EudaCuratedSensor(EudaEntity, SensorEntity):
