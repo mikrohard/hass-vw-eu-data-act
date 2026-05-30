@@ -103,30 +103,55 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         except ApiError as err:
             raise UpdateFailed(str(err)) from err
 
-        # newest first by createdOn
-        listing = [e for e in listing if e.get("name")]
-        listing.sort(key=lambda e: _created_on(e) or datetime.min.replace(tzinfo=timezone.utc))
+        # content datasets, oldest -> newest by createdOn
+        content = sorted(
+            (e for e in listing if e.get("name") and not e["name"].endswith(NO_CONTENT_SUFFIX)),
+            key=lambda e: _created_on(e) or datetime.min.replace(tzinfo=timezone.utc),
+        )
+        _LOGGER.debug(
+            "refresh: %d listed, %d with content, %d already ingested",
+            len(listing), len(content), len(self._ingested),
+        )
 
-        new_files = [
-            e for e in listing
-            if e["name"] not in self._ingested and not e["name"].endswith(NO_CONTENT_SUFFIX)
-        ]
+        if not content:
+            self._reschedule(listing)
+            if self.data:
+                return self.data
+            raise UpdateFailed("No datasets with content available yet")
 
-        # remember every name we have seen (incl. no-content) so we don't re-list them
-        for e in listing:
-            self._ingested.add(e["name"])
+        newest = content[-1]
+        new_files = [e for e in content if e["name"] not in self._ingested]
 
-        found_new = bool(new_files)
-        # backfill oldest -> newest so latest_dataset ends up newest
+        # 1. Live state: ALWAYS (re)load the newest dataset so entities reflect
+        #    it, even when everything has already been ingested (e.g. after a
+        #    restart with persisted state). This is independent of statistics.
+        try:
+            payload = await self.client.async_download_dataset(
+                self.vin, self.identifier, newest["name"]
+            )
+            self.latest_dataset = Dataset.from_json(payload)
+        except ApiError as err:
+            self._reschedule(listing)
+            if self.data:
+                _LOGGER.warning("Could not download newest %s: %s", newest["name"], err)
+                return self.data
+            raise UpdateFailed(f"Could not download newest dataset: {err}") from err
+
+        # 2. Backfill statistics for any not-yet-ingested datasets (oldest first).
         for e in new_files:
-            try:
-                payload = await self.client.async_download_dataset(self.vin, self.identifier, e["name"])
-            except ApiError as err:
-                _LOGGER.warning("Skipping %s: %s", e["name"], err)
-                continue
-            ds = Dataset.from_json(payload)
-            self.latest_dataset = ds
+            if e["name"] == newest["name"]:
+                ds = self.latest_dataset  # reuse the one just downloaded
+            else:
+                try:
+                    payload = await self.client.async_download_dataset(
+                        self.vin, self.identifier, e["name"]
+                    )
+                except ApiError as err:
+                    _LOGGER.warning("Skipping %s: %s", e["name"], err)
+                    continue
+                ds = Dataset.from_json(payload)
             self._collect_stats(ds, fallback_ts=_created_on(e))
+            self._ingested.add(e["name"])
 
         if new_files:
             await self._save_store()
@@ -134,31 +159,27 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         if self.entities_ready:
             self._write_statistics()
 
-        # ---- reschedule -------------------------------------------------
-        self._reschedule(listing, found_new)
-
-        if self.latest_dataset is None:
-            if not listing:
-                raise UpdateFailed("No datasets available yet")
-            # nothing decodable but keep prior data if any
-            if self.data:
-                return self.data
-            raise UpdateFailed("No decodable datasets available yet")
-
+        self._reschedule(listing)
         return self.latest_dataset.points
 
-    def _reschedule(self, listing: list[dict], found_new: bool) -> None:
-        if found_new and listing:
-            newest = _created_on(listing[-1])
-            if newest:
-                target = newest + DATASET_INTERVAL + POST_DATASET_BUFFER
-                delta = target - dt_util.utcnow()
-                self.update_interval = delta if delta > MIN_INTERVAL else MIN_INTERVAL
-                _LOGGER.debug("Next refresh in %s (after newest %s)", self.update_interval, newest)
+    def _reschedule(self, listing: list[dict]) -> None:
+        """Schedule the next poll for ~15 min after the newest known dataset.
+
+        If that time has already passed (a new dataset is due but not yet
+        present), poll every minute until it appears.
+        """
+        timestamps = [ts for e in listing if (ts := _created_on(e))]
+        newest = max(timestamps) if timestamps else None
+        if newest:
+            target = newest + DATASET_INTERVAL + POST_DATASET_BUFFER
+            delta = target - dt_util.utcnow()
+            if delta > MIN_INTERVAL:
+                self.update_interval = delta
+                _LOGGER.debug("Next refresh in %s (after newest %s)", delta, newest)
                 return
-        # no new data -> short retry until the next drop appears
+        # newest dataset is overdue (or unknown) -> short retry for the next drop
         self.update_interval = RETRY_INTERVAL
-        _LOGGER.debug("No new dataset; retrying in %s", RETRY_INTERVAL)
+        _LOGGER.debug("Next dataset overdue; retrying in %s", RETRY_INTERVAL)
 
     # -- statistics --------------------------------------------------------
 
