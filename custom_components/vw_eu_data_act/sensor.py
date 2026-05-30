@@ -83,7 +83,7 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
     @property
     def native_value(self):
         dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
-        return dp.value if dp else None
+        return self._sticky(dp.value if dp else None)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -121,7 +121,7 @@ class EudaRawSensor(EudaEntity, SensorEntity):
     @property
     def native_value(self):
         dp = (self.coordinator.data or {}).get(self._key)
-        return dp.value if dp else None
+        return self._sticky(dp.value if dp else None)
 
     @property
     def extra_state_attributes(self) -> dict:

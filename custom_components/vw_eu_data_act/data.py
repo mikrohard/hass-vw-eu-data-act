@@ -44,6 +44,16 @@ def parse_duration_seconds(raw: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+def sticky(previous, current):
+    """Keep the last known value when an update omits a field.
+
+    The portal's snapshots don't include every field every cycle; a missing
+    field means "no fresh reading", not "unavailable", so we fall back to the
+    previous value instead of reporting unknown.
+    """
+    return current if current is not None else previous
+
+
 def parse_value(raw: str | None, type_hint: str | None = None):
     """Coerce a raw string value into a typed Python value.
 

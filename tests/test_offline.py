@@ -131,6 +131,13 @@ def main() -> int:
     key = "1763a4fe-d8a6-3b8c-b095-70081f3e61c7"  # a key shared across vehicles
     check("vin-prefixed", const.raw_unique_id("VINA", key), f"VINA_{key}")
     check("distinct per vehicle", const.raw_unique_id("VINA", key) != const.raw_unique_id("VINB", key), True)
+
+    # --- sticky values: keep last when an update omits a field (issue #9) -
+    print("sticky values:")
+    check("fresh value kept", data.sticky(50, 55), 55)
+    check("missing -> previous retained", data.sticky(55, None), 55)
+    check("zero is not missing", data.sticky(55, 0), 0)
+    check("false is not missing", data.sticky(True, False), False)
     present = {dp.field_name for dp in ds.points.values()}
     curated_present = present & data.CURATED_FIELDS
     raw_count = len(ds.points) - sum(

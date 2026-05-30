@@ -6,6 +6,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_NICKNAME, DOMAIN
 from .coordinator import EudaCoordinator
+from .data import sticky
 
 
 class EudaEntity(CoordinatorEntity[EudaCoordinator]):
@@ -15,6 +16,7 @@ class EudaEntity(CoordinatorEntity[EudaCoordinator]):
 
     def __init__(self, coordinator: EudaCoordinator) -> None:
         super().__init__(coordinator)
+        self._last_value = None
         vin = coordinator.vin
         name = coordinator.entry.data.get(CONF_NICKNAME) or vin
         self._attr_device_info = DeviceInfo(
@@ -24,3 +26,8 @@ class EudaEntity(CoordinatorEntity[EudaCoordinator]):
             model="EU Data Act vehicle",
             serial_number=vin,
         )
+
+    def _sticky(self, value):
+        """Return ``value``, or the last known value if this update omits it."""
+        self._last_value = sticky(self._last_value, value)
+        return self._last_value

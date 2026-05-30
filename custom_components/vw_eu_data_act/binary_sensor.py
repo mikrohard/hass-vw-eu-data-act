@@ -56,9 +56,7 @@ class EudaBinarySensor(EudaEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
-        if dp is None:
-            return None
-        val = dp.value
-        if not isinstance(val, bool):
-            return None
-        return (not val) if self._curated.invert else val
+        result = None
+        if dp is not None and isinstance(dp.value, bool):
+            result = (not dp.value) if self._curated.invert else dp.value
+        return self._sticky(result)
