@@ -146,15 +146,18 @@ class Dataset:
         )
 
     def by_field(self, field_name: str) -> DataPoint | None:
-        """Return the most relevant point for a (possibly duplicated) field name.
+        """Return a single data point for a (possibly duplicated) field name.
 
-        Duplicated field names (timestamp, car_captured_time, …) are uncommon
-        among curated fields; when present we just return the first match.
+        The portal merges several report snapshots into one flat array with no
+        ordering guarantee and no way to tell which value is "live", so a field
+        like ``charging_state_report.current_charge_state`` can appear several
+        times under different UUIDs with conflicting values. We pick the entry
+        with the smallest ``key`` (UUID): an arbitrary but *stable* choice, so a
+        curated sensor consistently tracks the same data point across refreshes
+        instead of flip-flopping when the portal reshuffles the array.
         """
-        for dp in self.points.values():
-            if dp.field_name == field_name:
-                return dp
-        return None
+        matches = [dp for dp in self.points.values() if dp.field_name == field_name]
+        return min(matches, key=lambda dp: dp.key) if matches else None
 
 
 def _parse_timestamp(raw: str) -> datetime | None:

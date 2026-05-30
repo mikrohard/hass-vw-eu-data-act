@@ -102,6 +102,22 @@ def main() -> int:
     check("remaining_climate_time", _field_val(ds, "remaining_climate_time"), 0.0)
     check("captured_at present", ds.captured_at is not None, True)
 
+    # --- duplicate field: deterministic selection regardless of order -----
+    print("duplicate field selection:")
+    dup_entries = [
+        {"key": "ccc", "dataFieldName": "charging_state_report.current_charge_state", "value": "C"},
+        {"key": "aaa", "dataFieldName": "charging_state_report.current_charge_state", "value": "A"},
+        {"key": "bbb", "dataFieldName": "charging_state_report.current_charge_state", "value": "B"},
+    ]
+    picks = set()
+    for order in ([0, 1, 2], [2, 1, 0], [1, 2, 0]):
+        ds_d = data.Dataset.from_json(
+            {"vin": "V", "user_id": "u", "Data": [dup_entries[i] for i in order]}
+        )
+        picks.add(_field_val(ds_d, "charging_state_report.current_charge_state"))
+    # always the smallest-key entry ("aaa" -> "A"), independent of array order
+    check("stable pick under shuffle", picks, {"A"})
+
     # --- curated / raw classification ------------------------------------
     print("curated registry:")
     check("soc is curated", "battery_state_report.soc" in data.CURATED_FIELDS, True)
