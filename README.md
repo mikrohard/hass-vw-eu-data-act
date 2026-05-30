@@ -48,12 +48,38 @@ Once datasets are being generated, continue with the installation below.
 
 ## Installation
 
-1. Copy `custom_components/vw_eu_data_act` into your Home Assistant
-   `config/custom_components/` directory (or add this repo to HACS as a custom
-   repository).
+### Option A — HACS (recommended)
+
+[HACS](https://hacs.xyz) must already be installed in Home Assistant.
+
+1. In Home Assistant go to **HACS** (sidebar).
+2. Open the **⋮** menu (top-right) → **Custom repositories**.
+3. Add this repository:
+   - **Repository:** `https://github.com/mikrohard/vw-eu-data-act`
+   - **Type / Category:** **Integration**
+
+   Then click **Add**.
+4. Back in HACS, search for **Volkswagen EU Data Act**, open it, and click
+   **Download** (pick the latest version).
+5. **Restart Home Assistant** when prompted.
+6. Continue with [Add the integration](#add-the-integration) below.
+
+> Once the repository is published/approved you can instead use this one-click
+> link (replace with your published URL):
+> *HACS → Integrations → Explore & Download → "Volkswagen EU Data Act"*.
+
+### Option B — Manual
+
+1. Copy the `custom_components/vw_eu_data_act` folder into your Home Assistant
+   `config/custom_components/` directory (so you end up with
+   `config/custom_components/vw_eu_data_act/manifest.json`).
 2. Restart Home Assistant.
-3. *Settings → Devices & Services → Add Integration → "Volkswagen EU Data Act"*.
-4. Enter the **same VW email/password** you used on the portal, then select your
+
+### Add the integration
+
+1. *Settings → Devices & Services → **Add Integration** → search "Volkswagen EU
+   Data Act"*.
+2. Enter the **same VW email/password** you used on the portal, then select your
    vehicle from the list.
 
 ## Notes & limitations
