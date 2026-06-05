@@ -1,4 +1,5 @@
 """Sensor platform: curated sensors + raw diagnostic data points."""
+
 from __future__ import annotations
 
 from homeassistant.components.sensor import (
@@ -42,7 +43,12 @@ async def async_setup_entry(
 
     # curated numeric / text sensors (one per field, if present)
     for curated in CURATED_SENSORS:
-        if curated.field_name in present_fields:
+        # Special handling for timestamp sensors (e.g., "mileage.timestamp")
+        if ".timestamp" in curated.field_name:
+            base_field = curated.field_name.replace(".timestamp", "")
+            if base_field in present_fields:
+                entities.append(EudaCuratedSensor(coordinator, curated))
+        elif curated.field_name in present_fields:
             entities.append(EudaCuratedSensor(coordinator, curated))
 
     # raw diagnostic sensors: every other unique key
@@ -87,45 +93,57 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         """Apply configured transform to the raw value."""
         if value is None or not self._curated.transform:
             return value
-        
+
         transform = self._curated.transform
-        
+
         if transform == "duration_s":
             # Already handled by parse_duration_seconds in parse_value
             return value
-        
+
         if transform == "decikelvin_to_celsius":
             from .data import decikelvin_to_celsius
+
             return decikelvin_to_celsius(str(value))
-        
+
         return value
 
     @property
     def native_value(self):
+        # Special handling for timestamp fields
+        if ".timestamp" in self._curated.field_name:
+            base_field = self._curated.field_name.replace(".timestamp", "")
+            dp = _find_by_field(self.coordinator.data or {}, base_field)
+            if dp and dp.timestamp:
+                return self._sticky(dp.timestamp)
+            return self._sticky(None)
+
         dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
-        
+
         if not dp:
             return self._sticky(None)
-        
+
         raw_value = dp.value
-        
+
         # Apply transforms if specified
         if self._curated.transform:
             if self._curated.transform == "decikelvin_to_celsius":
                 from .data import decikelvin_to_celsius
+
                 transformed = decikelvin_to_celsius(dp.raw_value)
                 return self._sticky(transformed)
-            
+
             elif self._curated.transform == "abs":
                 from .data import abs_value
+
                 transformed = abs_value(raw_value)
                 return self._sticky(transformed)
-            
+
             elif self._curated.transform == "fuel_consumption":
                 from .data import fuel_consumption_l_per_1000km_to_l_per_100km
+
                 transformed = fuel_consumption_l_per_1000km_to_l_per_100km(raw_value)
                 return self._sticky(transformed)
-        
+
         return self._sticky(raw_value)
 
     @property

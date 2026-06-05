@@ -150,6 +150,7 @@ class DataPoint:
     unit: str | None = None
     description: str | None = None
     cluster: str | None = None
+    timestamp_utc: str | None = None
 
     @property
     def value(self):
@@ -161,6 +162,11 @@ class DataPoint:
             if 0 <= v < len(members):
                 return members[v]
         return v
+
+    @property
+    def timestamp(self) -> datetime | None:
+        """Parse the timestampUtc field into a datetime object."""
+        return _parse_timestamp(self.timestamp_utc) if self.timestamp_utc else None
 
 
 @dataclass
@@ -191,6 +197,7 @@ class Dataset:
                 unit=meta.get("unit") or None,
                 description=meta.get("description") or None,
                 cluster=meta.get("cluster") or None,
+                timestamp_utc=item.get("timestampUtc") or None,
             )
             points[key] = dp
             if field_name == "car_captured_time":
@@ -798,6 +805,15 @@ CURATED_SENSORS: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+    ),
+    # === Vehicle Status ===
+    CuratedSensor(
+        "mileage.timestamp",
+        "Last connected",
+        "timestamp",
+        None,
+        None,
+        icon="mdi:clock",
     ),
     # === Enum/Status Sensors ===
     CuratedSensor(
