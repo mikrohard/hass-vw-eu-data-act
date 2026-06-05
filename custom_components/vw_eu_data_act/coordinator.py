@@ -1,7 +1,9 @@
 """Coordinator: dynamic-interval refresh of the latest dataset."""
+
 from __future__ import annotations
 
 import logging
+import asyncio
 from datetime import datetime, timezone
 
 from homeassistant.config_entries import ConfigEntry
@@ -54,7 +56,9 @@ def _created_on(entry: dict) -> datetime | None:
 class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
     """Fetches the latest dataset and reschedules adaptively."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: EudaApiClient) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, client: EudaApiClient
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -72,7 +76,11 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
 
         # content datasets, oldest -> newest by createdOn
         content = sorted(
-            (e for e in listing if e.get("name") and not e["name"].endswith(NO_CONTENT_SUFFIX)),
+            (
+                e
+                for e in listing
+                if e.get("name") and not e["name"].endswith(NO_CONTENT_SUFFIX)
+            ),
             key=lambda e: _created_on(e) or datetime.min.replace(tzinfo=timezone.utc),
         )
         _LOGGER.debug("refresh: %d listed, %d with content", len(listing), len(content))
@@ -80,26 +88,94 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         if not content:
             self._reschedule(listing)
             if self.data:
+                _LOGGER.debug("No new datasets available, keeping previous data")
                 return self.data
-            raise UpdateFailed("No datasets with content available yet")
-
-        # Load the newest dataset for live state. (We don't backfill history into
-        # statistics: importing into recorder-managed sensor entities collides
-        # with the recorder's own statistics and can corrupt unrelated ones.)
-        newest = content[-1]
-        try:
-            payload = await self.client.async_download_dataset(
-                self.vin, self.identifier, newest["name"]
+            _LOGGER.warning(
+                "No datasets available yet, will retry in %s", RETRY_INTERVAL
             )
-            self.latest_dataset = Dataset.from_json(payload)
-        except ApiError as err:
-            self.update_interval = RETRY_INTERVAL  # retry soon, not next cadence
+            return {}
+
+        # Try to load datasets, starting with newest and falling back to older ones
+        last_error = None
+        for dataset_entry in reversed(content):
+            # Retry mechanism for transient server errors
+            max_retries = 5
+            retry_delay = 10  # seconds
+
+            for attempt in range(max_retries):
+                try:
+                    payload = await self.client.async_download_dataset(
+                        self.vin, self.identifier, dataset_entry["name"]
+                    )
+                    self.latest_dataset = Dataset.from_json(payload)
+                    last_error = None
+                    break  # Success!
+                except ApiError as err:
+                    last_error = err
+                    is_server_error = any(
+                        code in str(err)
+                        for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
+                    )
+
+                    if is_server_error and attempt < max_retries - 1:
+                        _LOGGER.warning(
+                            "Server error downloading %s (attempt %d/%d): %s, retrying in %ds",
+                            dataset_entry["name"],
+                            attempt + 1,
+                            max_retries,
+                            err,
+                            retry_delay,
+                        )
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    elif is_server_error:
+                        _LOGGER.warning(
+                            "Server error downloading %s after %d attempts: %s, trying previous dataset",
+                            dataset_entry["name"],
+                            max_retries,
+                            err,
+                        )
+                        break
+                    else:
+                        _LOGGER.warning(
+                            "Error downloading %s: %s", dataset_entry["name"], err
+                        )
+                        break
+
+            if last_error is None:
+                break
+
+            if last_error and not any(
+                code in str(last_error)
+                for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
+            ):
+                break
+
+        # If all downloads failed
+        if last_error:
+            self.update_interval = RETRY_INTERVAL
             if self.data:
-                _LOGGER.warning("Could not download newest %s: %s", newest["name"], err)
+                _LOGGER.warning(
+                    "Could not download any dataset (last error: %s), keeping previous data",
+                    last_error,
+                )
+                self._reschedule(listing)
                 return self.data
-            raise UpdateFailed(f"Could not download newest dataset: {err}") from err
+            _LOGGER.error(
+                "Could not download any dataset on first load: %s. Integration will load "
+                "but entities remain unavailable until data arrives. Retrying in %s",
+                last_error,
+                RETRY_INTERVAL,
+            )
+            return {}
 
         self._reschedule(listing)
+
+        if self.data:
+            merged = dict(self.data)
+            merged.update(self.latest_dataset.points)
+            return merged
+
         return self.latest_dataset.points
 
     async def _async_list_with_refresh(self) -> list[dict]:
@@ -113,7 +189,9 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         """
         for retried in (False, True):
             try:
-                listing = await self.client.async_list_datasets(self.vin, self.identifier)
+                listing = await self.client.async_list_datasets(
+                    self.vin, self.identifier
+                )
             except AuthError as err:
                 self.update_interval = RETRY_INTERVAL
                 raise UpdateFailed(f"Authentication failed: {err}") from err
