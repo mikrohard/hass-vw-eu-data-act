@@ -19,21 +19,74 @@ def raw_unique_id(vin: str, key: str) -> str:
 BASE_URL = "https://eu-data-act.drivesomethinggreater.com"
 IDENTITY_BASE = "https://identity.vwgroup.io"
 
-# Brand is part of the OIDC state; VW passenger cars by default.
-BRAND = "VOLKSWAGEN_PASSENGER_CARS"
 CALLBACK_LOGIN_PATH = "/services/callbacklogin"
 
 # OIDC: we build the authorize URL directly instead of using the portal's
 # /services/redirect/authentication servlet, which returns HTTP 500 for
 # non-browser clients (it depends on AEM browser session state).
 OIDC_AUTHORIZE_URL = IDENTITY_BASE + "/oidc/v1/authorize"
-OIDC_CLIENT_ID = "9b58543e-1c15-4193-91d5-8a14145bebb0@apps_vw-dilab_com"
 OIDC_SCOPE = "openid cars profile"
 OIDC_REDIRECT_URI = BASE_URL + "/login"
+
+# --- Multi-brand configuration --------------------------------------------
+# Each brand has its own client_id and state string for the OIDC flow.
+# Client IDs extracted from the evcc project (vehicle/vw/eudataact/types.go).
+
+BRANDS: dict[str, dict[str, str]] = {
+    "volkswagen": {
+        "display_name": "Volkswagen",
+        "client_id": "9b58543e-1c15-4193-91d5-8a14145bebb0@apps_vw-dilab_com",
+        "state": "VOLKSWAGEN_PASSENGER_CARS",
+    },
+    "audi": {
+        "display_name": "Audi",
+        "client_id": "cc29b87a-5e9a-4362-aecf-5adea6b01bbb@apps_vw-dilab_com",
+        "state": "AUDI",
+    },
+    "skoda": {
+        "display_name": "Škoda",
+        "client_id": "3ea88bf9-1d4e-4a68-b3ad-4098c1f1d246@apps_vw-dilab_com",
+        "state": "SKODA",
+    },
+    "seat": {
+        "display_name": "SEAT",
+        "client_id": "f85e5b69-e3b2-43aa-9c0d-1b7d0e0b576f@apps_vw-dilab_com",
+        "state": "SEAT",
+    },
+    "cupra": {
+        "display_name": "CUPRA",
+        "client_id": "f85e5b69-e3b2-43aa-9c0d-1b7d0e0b576f@apps_vw-dilab_com",
+        "state": "CUPRA",
+    },
+}
+
+BRAND_CHOICES: dict[str, str] = {k: v["display_name"] for k, v in BRANDS.items()}
+
+# Default brand for backward compatibility with existing config entries
+DEFAULT_BRAND = "volkswagen"
+
 # state encodes country__language__brand (echoed back to the portal callback).
-DEFAULT_COUNTRY = "si"
-DEFAULT_LANGUAGE = "sl"
-OIDC_STATE = f"{DEFAULT_COUNTRY}__{DEFAULT_LANGUAGE}__{BRAND}"
+DEFAULT_COUNTRY = "de"
+DEFAULT_LANGUAGE = "en"
+
+# Config entry key for brand selection
+CONF_BRAND = "brand"
+
+
+def get_oidc_client_id(brand: str = DEFAULT_BRAND) -> str:
+    """Return the OIDC client_id for the given brand."""
+    return BRANDS.get(brand, BRANDS[DEFAULT_BRAND])["client_id"]
+
+
+def get_oidc_state(brand: str = DEFAULT_BRAND) -> str:
+    """Return the OIDC state for the given brand."""
+    brand_state = BRANDS.get(brand, BRANDS[DEFAULT_BRAND])["state"]
+    return f"{DEFAULT_COUNTRY}__{DEFAULT_LANGUAGE}__{brand_state}"
+
+
+# Legacy constants for backward compatibility (default to VW)
+OIDC_CLIENT_ID = BRANDS[DEFAULT_BRAND]["client_id"]
+OIDC_STATE = get_oidc_state(DEFAULT_BRAND)
 
 # proxy_api paths (relative to BASE_URL)
 VEHICLES_PATH = "/proxy_api/consent/me/vehicles"

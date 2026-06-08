@@ -19,10 +19,8 @@ from .const import (
     METADATA_PATH,
     NO_CONTENT_SUFFIX,
     OIDC_AUTHORIZE_URL,
-    OIDC_CLIENT_ID,
     OIDC_REDIRECT_URI,
     OIDC_SCOPE,
-    OIDC_STATE,
     RELATION_PATH,
     USER_AGENT,
     VEHICLES_PATH,
@@ -168,10 +166,11 @@ def _extract_vins(payload) -> list[dict]:
 class EudaApiClient:
     """Authenticated client for the EU Data Act portal."""
 
-    def __init__(self, session: aiohttp.ClientSession, email: str, password: str) -> None:
+    def __init__(self, session: aiohttp.ClientSession, email: str, password: str, brand: str = "volkswagen") -> None:
         self._session = session
         self._email = email
         self._password = password
+        self._brand = brand
         self._logged_in = False
 
     # -- low level ---------------------------------------------------------
@@ -203,7 +202,7 @@ class EudaApiClient:
         #    authorize URL ourselves because the portal's
         #    /services/redirect/authentication servlet returns HTTP 500 for
         #    non-browser clients.
-        authorize_url = self._build_authorize_url()
+        authorize_url = self._build_authorize_url(self._brand)
         _LOGGER.debug("login step1: authorize url = %s", authorize_url)
         async with await self._get(authorize_url) as resp:
             signin_url = str(resp.url)
@@ -281,13 +280,14 @@ class EudaApiClient:
             raise AuthError(f"Login did not complete (ended at {landing})")
 
     @staticmethod
-    def _build_authorize_url() -> str:
+    def _build_authorize_url(brand: str = "volkswagen") -> str:
         """Construct the OIDC authorize URL (bypasses the broken AEM servlet)."""
+        from .const import get_oidc_client_id, get_oidc_state
         params = {
-            "client_id": OIDC_CLIENT_ID,
+            "client_id": get_oidc_client_id(brand),
             "response_type": "code",
             "scope": OIDC_SCOPE,
-            "state": OIDC_STATE,
+            "state": get_oidc_state(brand),
             "redirect_uri": OIDC_REDIRECT_URI,
             "prompt": "login",
         }
