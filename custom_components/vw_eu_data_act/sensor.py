@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
++import re
++
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -71,6 +73,59 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
++
++def _shorten_enum_value(dp: DataPoint, value):
++    """Shorten verbose VW enum labels for display only.
++
++    Keeps DataPoint.raw_value unchanged. It removes enum prefixes that are
++    repeated in the data field name, also for dotted fields like
++    ``charging_state_report.current_charge_state`` where VW returns values like
++    ``CHARGE_STATE_CHARGING_HV_BATTERY``.
++    """
++    if dp is None or not isinstance(value, str):
++        return value
++
++    # Only touch VW-style enum strings. Normal text/numbers stay unchanged.
++    if not re.fullmatch(r"[A-Z0-9_]+", value):
++        return value
++
++    def normalize(text: str) -> str:
++        return re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").upper()
++
++    candidates: list[str] = []
++
++    def add_candidate(text: str) -> None:
++        text = normalize(text)
++        if text and text not in candidates:
++            candidates.append(text)
++
++    field_name = dp.field_name or ""
++
++    # Whole field and dotted parts.
++    add_candidate(field_name)
++    for part in field_name.split("."):
++        add_candidate(part)
++
++    # Remove common group prefixes such as settings_ or status_.
++    normalized = normalize(field_name)
++    for removable in ("SETTINGS_", "STATUS_", "CHARGING_STATE_REPORT_"):
++        if normalized.startswith(removable):
++            add_candidate(normalized.removeprefix(removable))
++
++    # For names like current_charge_state also try charge_state.
++    for candidate in list(candidates):
++        tokens = candidate.split("_")
++        for i in range(1, len(tokens)):
++            add_candidate("_".join(tokens[i:]))
++
++    # Longest prefixes first avoids stripping only STATE_ when CHARGE_STATE_ matches.
++    for prefix in sorted(candidates, key=len, reverse=True):
++        full_prefix = f"{prefix}_"
++        if value.startswith(full_prefix) and len(value) > len(full_prefix):
++            return value[len(full_prefix):]
++
++    return value
++
 
 def _find_by_field(points: dict[str, DataPoint], field_name: str) -> DataPoint | None:
     """Pick a single point for a (possibly duplicated) field name.
@@ -156,7 +211,7 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 transformed = fuel_consumption_l_per_1000km_to_l_per_100km(raw_value)
                 return self._sticky(transformed)
 
-        return self._sticky(raw_value)
+        return self._sticky(_shorten_enum_value(dp, raw_value))
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -195,7 +250,7 @@ class EudaRawSensor(EudaEntity, SensorEntity):
     @property
     def native_value(self):
         dp = (self.coordinator.data or {}).get(self._key)
-        return self._sticky(dp.value if dp else None)
+        return self._sticky(_shorten_enum_value(dp, dp.value) if dp else None)
 
     @property
     def extra_state_attributes(self) -> dict:
