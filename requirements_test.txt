@@ -1,0 +1,3 @@
+# Test dependencies. pytest-homeassistant-custom-component pulls in a matching
+# Home Assistant core and pytest, so this single pin covers the HA test suite.
+pytest-homeassistant-custom-component==0.13.316
