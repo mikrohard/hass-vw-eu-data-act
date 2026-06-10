@@ -27,6 +27,14 @@ from .data import Dataset, DataPoint
 
 _LOGGER = logging.getLogger(__name__)
 
+# Transient upstream errors worth retrying / keeping previous data for.
+_SERVER_ERROR_CODES = frozenset({500, 502, 503, 504})
+
+
+def _is_server_error(err: Exception) -> bool:
+    """True for transient upstream 5xx failures (carried on ApiError.status)."""
+    return getattr(err, "status", None) in _SERVER_ERROR_CODES
+
 
 def _filename_timestamp(name: str) -> datetime | None:
     """Parse a YYYYMMDDhhmmss segment from a dataset filename.
@@ -120,10 +128,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                     raise ConfigEntryAuthFailed(str(err)) from err
                 except ApiError as err:
                     last_error = err
-                    is_server_error = any(
-                        code in str(err)
-                        for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
-                    )
+                    is_server_error = _is_server_error(err)
 
                     if is_server_error and attempt < max_retries - 1:
                         _LOGGER.debug(
@@ -153,10 +158,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
             if last_error is None:
                 break
 
-            if last_error and not any(
-                code in str(last_error)
-                for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
-            ):
+            if last_error and not _is_server_error(last_error):
                 break
 
         # If all downloads failed
@@ -229,10 +231,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
 
                 except ApiError as err:
                     last_error = err
-                    is_server_error = any(
-                        code in str(err)
-                        for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
-                    )
+                    is_server_error = _is_server_error(err)
 
                     # Retry server errors with delay
                     if is_server_error and attempt < max_retries - 1:
@@ -256,7 +255,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                 self.update_interval = RETRY_INTERVAL
 
                 # HTTP 400 special case
-                if "HTTP 400" in str(last_error):
+                if getattr(last_error, "status", None) == 400:
                     raise UpdateFailed(
                         "Data delivery not ready yet (HTTP 400). If you just enabled "
                         "the continuous data request on the portal, it can take a few "
@@ -264,11 +263,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                     ) from last_error
 
                 # Server errors with existing data - return empty to keep old data
-                is_server_error = any(
-                    code in str(last_error)
-                    for code in ["HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"]
-                )
-                if is_server_error and self.data:
+                if _is_server_error(last_error) and self.data:
                     _LOGGER.error(
                         "Failed to list datasets after %d attempts: %s. Keeping previous data.",
                         max_retries,

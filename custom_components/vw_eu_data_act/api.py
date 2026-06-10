@@ -30,7 +30,16 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
-    """Generic API failure."""
+    """Generic API failure.
+
+    Carries the HTTP ``status`` when the failure came from an HTTP response, so
+    callers can branch on it (e.g. retry 5xx) without grepping the message
+    string. ``None`` for non-HTTP failures (connection errors, bad JSON, …).
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class AuthError(ApiError):
@@ -304,7 +313,7 @@ class EudaApiClient:
                     await self.async_login()
                     return await self._get_json(url, headers=headers, _retry=False)
                 if resp.status >= 400:
-                    raise ApiError(f"GET {url} -> HTTP {resp.status}")
+                    raise ApiError(f"GET {url} -> HTTP {resp.status}", status=resp.status)
                 text = await resp.text()
         except aiohttp.ClientError as err:
             raise ApiError(f"Connection error for {url}: {err}") from err
@@ -371,10 +380,12 @@ class EudaApiClient:
                     await self.async_login()
                     async with await self._get(url, headers=headers) as resp2:
                         if resp2.status >= 400:
-                            raise ApiError(f"Download {name} -> HTTP {resp2.status}")
+                            raise ApiError(
+                                f"Download {name} -> HTTP {resp2.status}", status=resp2.status
+                            )
                         raw = await resp2.read()
                 elif resp.status >= 400:
-                    raise ApiError(f"Download {name} -> HTTP {resp.status}")
+                    raise ApiError(f"Download {name} -> HTTP {resp.status}", status=resp.status)
                 else:
                     raw = await resp.read()
         except aiohttp.ClientError as err:
