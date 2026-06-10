@@ -71,6 +71,9 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         super().__init__(
             hass,
             _LOGGER,
+            # Pass the entry explicitly; relying on the ContextVar is deprecated
+            # and breaks in HA 2026.8.
+            config_entry=entry,
             name=f"{DOMAIN} {entry.data[CONF_VIN]}",
             update_interval=RETRY_INTERVAL,
         )
