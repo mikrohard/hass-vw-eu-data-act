@@ -23,6 +23,7 @@ from .data import (
     CuratedSensor,
     DataPoint,
     detect_dataset_format,
+    find_by_field,
     friendly_name,
     resolve_distance_unit,
 )
@@ -72,18 +73,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _find_by_field(points: dict[str, DataPoint], field_name: str) -> DataPoint | None:
-    """Pick a single point for a (possibly duplicated) field name.
-
-    The portal's flat array is unordered and a field can appear multiple times
-    under different UUIDs with conflicting values, with no way to tell which is
-    "live". Select the smallest UUID: arbitrary but stable, so the sensor tracks
-    the same data point across refreshes instead of flip-flopping on reshuffle.
-    """
-    matches = [dp for dp in points.values() if dp.field_name == field_name]
-    return min(matches, key=lambda dp: dp.key) if matches else None
-
-
 class EudaCuratedSensor(EudaEntity, SensorEntity):
     """A curated, well-typed sensor (enabled by default)."""
 
@@ -106,12 +95,12 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         # Special handling for timestamp fields (both "mileage.timestamp" and "mileage.value.timestamp")
         if ".timestamp" in self._curated.field_name:
             base_field = self._curated.field_name.replace(".timestamp", "")
-            dp = _find_by_field(self.coordinator.data or {}, base_field)
+            dp = find_by_field(self.coordinator.data or {}, base_field)
             if dp and dp.timestamp:
                 return self._sticky(dp.timestamp)
             return self._sticky(None)
 
-        dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
+        dp = find_by_field(self.coordinator.data or {}, self._curated.field_name)
 
         if not dp:
             return self._sticky(None)
@@ -147,7 +136,7 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         # otherwise use the static curated unit.
         cur = self._curated
         if cur.unit_field:
-            dp = _find_by_field(self.coordinator.data or {}, cur.unit_field)
+            dp = find_by_field(self.coordinator.data or {}, cur.unit_field)
             if dp is not None:
                 resolver = UNIT_RESOLVERS.get(cur.unit_resolver, resolve_distance_unit)
                 resolved = resolver(dp.value)

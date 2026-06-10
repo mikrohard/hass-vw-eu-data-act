@@ -17,6 +17,7 @@ from .data import (
     CuratedBinary,
     DataPoint,
     detect_dataset_format,
+    find_by_field,
 )
 from .entity import EudaEntity
 
@@ -43,16 +44,6 @@ async def async_setup_entry(
     )
 
 
-def _find_by_field(points: dict[str, DataPoint], field_name: str) -> DataPoint | None:
-    """Pick a single point for a (possibly duplicated) field name.
-
-    See sensor._find_by_field: the smallest UUID is chosen for a stable,
-    deterministic selection across refreshes.
-    """
-    matches = [dp for dp in points.values() if dp.field_name == field_name]
-    return min(matches, key=lambda dp: dp.key) if matches else None
-
-
 class EudaBinarySensor(EudaEntity, BinarySensorEntity):
     """A curated boolean sensor."""
 
@@ -68,7 +59,7 @@ class EudaBinarySensor(EudaEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
+        dp = find_by_field(self.coordinator.data or {}, self._curated.field_name)
         result = None
 
         if dp is not None:
