@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -115,6 +116,8 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                     self._is_initial_setup = False
                     last_error = None
                     break  # Success!
+                except AuthError as err:
+                    raise ConfigEntryAuthFailed(str(err)) from err
                 except ApiError as err:
                     last_error = err
                     is_server_error = any(
@@ -222,8 +225,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                     return listing
 
                 except AuthError as err:
-                    self.update_interval = RETRY_INTERVAL
-                    raise UpdateFailed(f"Authentication failed: {err}") from err
+                    raise ConfigEntryAuthFailed(str(err)) from err
 
                 except ApiError as err:
                     last_error = err
