@@ -1,4 +1,4 @@
-"""The Volkswagen EU Data Act integration."""
+"""The VW Group EU Data Act integration."""
 from __future__ import annotations
 
 from dataclasses import dataclass

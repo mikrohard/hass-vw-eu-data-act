@@ -101,24 +101,6 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         if curated.suggested_display_precision is not None:
             self._attr_suggested_display_precision = curated.suggested_display_precision
 
-    def _apply_transform(self, value):
-        """Apply configured transform to the raw value."""
-        if value is None or not self._curated.transform:
-            return value
-
-        transform = self._curated.transform
-
-        if transform == "duration_s":
-            # Already handled by parse_duration_seconds in parse_value
-            return value
-
-        if transform == "decikelvin_to_celsius":
-            from .data import decikelvin_to_celsius
-
-            return decikelvin_to_celsius(str(value))
-
-        return value
-
     @property
     def native_value(self):
         # Special handling for timestamp fields (both "mileage.timestamp" and "mileage.value.timestamp")
