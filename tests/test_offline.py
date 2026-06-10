@@ -123,7 +123,7 @@ def main() -> int:
     print("curated registry:")
     check("soc is curated", "battery_state_report.soc" in data.CURATED_FIELDS, True)
     check("locked is curated", "locked" in data.CURATED_FIELDS, True)
-    _mintemp = next(s for s in data.CURATED_SENSORS if s.field_name == "min_temperature")
+    _mintemp = next(s for s in data.CURATED_SENSORS_FLAT if s.field_name == "min_temperature")
     check("min_temperature named battery", _mintemp.name, "Battery min temperature")
 
     # --- raw unique_id namespaced by VIN (multi-vehicle, issue #7) --------
@@ -184,7 +184,7 @@ def main() -> int:
     check("KM -> km", data.resolve_distance_unit("KM"), "km")
     check("lowercase miles -> mi", data.resolve_distance_unit("miles"), "mi")
     check("unknown -> None", data.resolve_distance_unit("LIGHTYEARS"), None)
-    mileage = next(s for s in data.CURATED_SENSORS if s.field_name == "mileage.value")
+    mileage = next(s for s in data.CURATED_SENSORS_DOTTED if s.field_name == "mileage.value")
     check("mileage declares unit_field", mileage.unit_field, "mileage.unit")
     # a miles dataset exposes mileage.unit so the sensor can pick "mi"
     ds_mi = data.Dataset.from_json({"vin": "V", "user_id": "u", "Data": [
