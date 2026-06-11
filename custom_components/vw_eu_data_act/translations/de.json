@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "VW Group EU Data Act",
+        "description": "Wählen Sie Ihre Fahrzeugmarke. Alle Marken des VW-Konzerns werden über das EU Data Act Portal unterstützt.",
+        "data": {
+          "brand": "Marke"
+        }
+      },
+      "credentials": {
+        "title": "Anmeldung",
+        "description": "Geben Sie Ihre VW-ID Zugangsdaten ein (dieselben wie auf eu-data-act.drivesomethinggreater.com).",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        }
+      },
+      "vehicle": {
+        "title": "Fahrzeug auswählen",
+        "data": {
+          "vin": "Fahrzeug"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut anmelden",
+        "description": "Geben Sie das Passwort für {email} ein.",
+        "data": {
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "E-Mail oder Passwort falsch. Bei Škoda/Audi/SEAT/CUPRA stellen Sie sicher, dass die richtige Marke ausgewählt ist.",
+      "cannot_connect": "Verbindung zum EU Data Act Portal nicht möglich.",
+      "no_vehicles": "Keine Fahrzeuge für dieses Konto gefunden. Stellen Sie sicher, dass Ihr Fahrzeug auf eu-data-act.drivesomethinggreater.com verknüpft ist.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten."
+    },
+    "abort": {
+      "already_configured": "Dieses Fahrzeug ist bereits konfiguriert.",
+      "auth": "Authentifizierung fehlgeschlagen; bitte die Integration erneut hinzufügen.",
+      "reauth_successful": "Erneute Authentifizierung erfolgreich."
+    }
+  }
+}

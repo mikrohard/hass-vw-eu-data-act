@@ -1,4 +1,4 @@
-"""The Volkswagen EU Data Act integration."""
+"""The VW Group EU Data Act integration."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EudaApiClient
-from .const import CONF_EMAIL, CONF_PASSWORD, CONF_VIN, raw_unique_id
+from .const import CONF_BRAND, CONF_EMAIL, CONF_PASSWORD, CONF_VIN, DEFAULT_BRAND, raw_unique_id
 from .coordinator import EudaCoordinator
 from .data import load_dictionary
 
@@ -44,7 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EudaConfigEntry) -> bool
         # JSON file) so it doesn't block the loop during dataset parsing.
         await hass.async_add_executor_job(load_dictionary)
 
-        client = EudaApiClient(session, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
+        client = EudaApiClient(session, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD], entry.data.get(CONF_BRAND, DEFAULT_BRAND))
         coordinator = EudaCoordinator(hass, entry, client)
 
         await coordinator.async_config_entry_first_refresh()

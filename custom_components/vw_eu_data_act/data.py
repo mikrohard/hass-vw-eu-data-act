@@ -227,18 +227,25 @@ class Dataset:
         )
 
     def by_field(self, field_name: str) -> DataPoint | None:
-        """Return a single data point for a (possibly duplicated) field name.
+        """Return a single data point for a (possibly duplicated) field name."""
+        return find_by_field(self.points, field_name)
 
-        The portal merges several report snapshots into one flat array with no
-        ordering guarantee and no way to tell which value is "live", so a field
-        like ``charging_state_report.current_charge_state`` can appear several
-        times under different UUIDs with conflicting values. We pick the entry
-        with the smallest ``key`` (UUID): an arbitrary but *stable* choice, so a
-        curated sensor consistently tracks the same data point across refreshes
-        instead of flip-flopping when the portal reshuffles the array.
-        """
-        matches = [dp for dp in self.points.values() if dp.field_name == field_name]
-        return min(matches, key=lambda dp: dp.key) if matches else None
+
+def find_by_field(
+    points: dict[str, "DataPoint"], field_name: str
+) -> "DataPoint | None":
+    """Pick a single data point for a (possibly duplicated) field name.
+
+    The portal merges several report snapshots into one flat array with no
+    ordering guarantee and no way to tell which value is "live", so a field
+    like ``charging_state_report.current_charge_state`` can appear several
+    times under different UUIDs with conflicting values. We pick the entry with
+    the smallest ``key`` (UUID): an arbitrary but *stable* choice, so a curated
+    sensor consistently tracks the same data point across refreshes instead of
+    flip-flopping when the portal reshuffles the array.
+    """
+    matches = [dp for dp in points.values() if dp.field_name == field_name]
+    return min(matches, key=lambda dp: dp.key) if matches else None
 
 
 def _parse_timestamp(raw: str) -> datetime | None:
@@ -376,6 +383,49 @@ class CuratedBinary:
     device_class: str | None = None
     invert: bool = False  # is_on = (value is False) when True
     icon: str | None = None
+    # How the field's integer value maps to on/off (see decode_binary_state):
+    # "open"   - 2=active, 3=inactive, 0/1=unknown  (doors, windows, locks, …)
+    # "onoff"  - 0=off, 1=on                         (parking_brake)
+    # "lights" - 2=off, 3/4/5=on, 0/1=unknown        (parking_lights)
+    encoding: str = "open"
+
+
+def decode_binary_state(
+    value, encoding: str = "open", invert: bool = False
+) -> bool | None:
+    """Decode a curated binary field's raw value into on / off / unknown.
+
+    Vehicle status fields encode their boolean in several ways, selected per
+    sensor via ``CuratedBinary.encoding`` rather than guessed from the field
+    name at runtime:
+
+      "open"   - 0/1 = unsupported/invalid (-> unknown); 2 = active (open /
+                 locked / safe / …), 3 = inactive. The dominant encoding for
+                 doors, windows, sunroofs and lock/safe states.
+      "onoff"  - 0 = off, 1 = on (e.g. parking_brake).
+      "lights" - 0/1 = unsupported/invalid; 2 = off; 3/4/5 = on (parking_lights).
+
+    Plain booleans are returned as-is regardless of ``encoding``. ``invert``
+    flips a decoded True/False (a "lock" sensor reads on when *un*locked); it
+    never turns a known state into unknown. Returns None when the value is
+    missing or carries an unsupported/invalid sentinel.
+    """
+    if isinstance(value, bool):
+        result: bool | None = value
+    elif isinstance(value, int):
+        if encoding == "onoff":
+            result = value == 1
+        elif encoding == "lights":
+            result = None if value in (0, 1) else value in (3, 4, 5)
+        elif value in (0, 1):
+            result = None  # unsupported / invalid sentinel
+        else:  # "open": 2 = active, 3 = inactive
+            result = value == 2
+    else:
+        result = None
+    if result is None:
+        return None
+    return (not result) if invert else result
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +589,13 @@ CURATED_BINARY_DOTTED: tuple[CuratedBinary, ...] = (
     CuratedBinary("locked", "Vehicle locked", "lock", invert=True, icon="mdi:car-key"),
     # ID.x datasets carry a flat-named parking_brake field even though most of
     # their fields are dotted, so it belongs in the dotted group too.
-    CuratedBinary("parking_brake", "Parking brake", None, icon="mdi:car-brake-parking"),
+    CuratedBinary(
+        "parking_brake",
+        "Parking brake",
+        None,
+        icon="mdi:car-brake-parking",
+        encoding="onoff",
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -1077,9 +1133,19 @@ CURATED_BINARY_FLAT: tuple[CuratedBinary, ...] = (
         icon="mdi:car-convertible",
     ),
     # === Other Binary States ===
-    CuratedBinary("parking_brake", "Parking brake", None, icon="mdi:car-brake-parking"),
     CuratedBinary(
-        "parking_lights", "Parking lights", "light", icon="mdi:car-parking-lights"
+        "parking_brake",
+        "Parking brake",
+        None,
+        icon="mdi:car-brake-parking",
+        encoding="onoff",
+    ),
+    CuratedBinary(
+        "parking_lights",
+        "Parking lights",
+        "light",
+        icon="mdi:car-parking-lights",
+        encoding="lights",
     ),
     CuratedBinary("state_of_hood", "Hood state", None, icon="mdi:car"),
     CuratedBinary("state_service_hatch", "Service hatch", None, icon="mdi:gas-station"),

@@ -16,11 +16,14 @@ from homeassistant.helpers.selector import (
 
 from .api import ApiError, AuthError, EudaApiClient
 from .const import (
+    BRAND_CHOICES,
+    CONF_BRAND,
     CONF_EMAIL,
     CONF_IDENTIFIER,
     CONF_NICKNAME,
     CONF_PASSWORD,
     CONF_VIN,
+    DEFAULT_BRAND,
     DOMAIN,
 )
 
@@ -33,6 +36,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
+        self._brand: str = DEFAULT_BRAND
         self._email: str | None = None
         self._password: str | None = None
         self._vehicles: list[dict] = []
@@ -40,6 +44,24 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Step 1: Select brand."""
+        if user_input is not None:
+            self._brand = user_input[CONF_BRAND]
+            return await self.async_step_credentials()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_BRAND, default=DEFAULT_BRAND): vol.In(BRAND_CHOICES),
+                }
+            ),
+        )
+
+    async def async_step_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2: Enter email and password."""
         errors: dict[str, str] = {}
         if user_input is not None:
             self._email = user_input[CONF_EMAIL]
@@ -53,7 +75,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_vehicle()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="credentials",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_EMAIL): str,
@@ -87,6 +109,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=title,
                     data={
+                        CONF_BRAND: self._brand,
                         CONF_EMAIL: self._email,
                         CONF_PASSWORD: self._password,
                         CONF_VIN: vin,
@@ -117,6 +140,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
+        self._brand = entry_data.get(CONF_BRAND, DEFAULT_BRAND)
         self._email = entry_data[CONF_EMAIL]
         return await self.async_step_reauth_confirm()
 
@@ -150,7 +174,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_try_login(self) -> str | None:
         """Attempt login + vehicle discovery; return an error key or None."""
         session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar())
-        client = EudaApiClient(session, self._email, self._password)
+        client = EudaApiClient(session, self._email, self._password, self._brand)
         try:
             await client.async_login()
             self._vehicles = await client.async_list_vehicles()
@@ -167,7 +191,7 @@ class EudaConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _async_fetch_identifier(self, vin: str) -> tuple[str, str | None]:
         session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar())
-        client = EudaApiClient(session, self._email, self._password)
+        client = EudaApiClient(session, self._email, self._password, self._brand)
         try:
             await client.async_login()
             meta = await client.async_get_metadata(vin)

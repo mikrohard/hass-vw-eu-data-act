@@ -2,8 +2,15 @@
   "config": {
     "step": {
       "user": {
-        "title": "Volkswagen EU Data Act",
-        "description": "Sign in with your Volkswagen ID credentials used on the EU Data Act portal.",
+        "title": "VW Group EU Data Act",
+        "description": "Select your vehicle brand. All VW Group brands are supported through the EU Data Act portal.",
+        "data": {
+          "brand": "Brand"
+        }
+      },
+      "credentials": {
+        "title": "Sign in",
+        "description": "Enter your VW-ID credentials (same as on eu-data-act.drivesomethinggreater.com).",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -24,9 +31,9 @@
       }
     },
     "error": {
-      "invalid_auth": "Invalid email or password.",
+      "invalid_auth": "Invalid email or password. If using Škoda/Audi/SEAT/CUPRA, make sure to select the correct brand.",
       "cannot_connect": "Could not connect to the EU Data Act portal.",
-      "no_vehicles": "No vehicles were found for this account.",
+      "no_vehicles": "No vehicles were found for this account. Make sure you have linked your vehicle on eu-data-act.drivesomethinggreater.com first.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
