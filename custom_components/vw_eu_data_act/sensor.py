@@ -138,6 +138,11 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
 
         # Apply transforms if specified
         if self._curated.transform:
+            if self._curated.transform == "timestamp":
+                from .data import _parse_timestamp
+
+                return self._sticky(_parse_timestamp(dp.raw_value))
+
             if self._curated.transform == "decikelvin_to_celsius":
                 from .data import decikelvin_to_celsius
 
