@@ -123,8 +123,39 @@ def main() -> int:
     print("curated registry:")
     check("soc is curated", "battery_state_report.soc" in data.CURATED_FIELDS, True)
     check("locked is curated", "locked" in data.CURATED_FIELDS, True)
-    _mintemp = next(s for s in data.CURATED_SENSORS if s.field_name == "min_temperature")
+    _mintemp = next(s for s in data.CURATED_SENSORS_FLAT if s.field_name == "min_temperature")
     check("min_temperature named battery", _mintemp.name, "Battery min temperature")
+
+    # --- binary state decoding (encoding-driven, not field-name guessing) -
+    print("binary decode:")
+    dec = data.decode_binary_state
+    # plain booleans pass through; invert flips
+    check("bool true", dec(True, "open", False), True)
+    check("bool invert", dec(True, "open", True), False)
+    # "open": 2=active(on), 3=inactive(off), 0/1=unknown
+    check("open 2 -> on", dec(2, "open", False), True)
+    check("open 3 -> off", dec(3, "open", False), False)
+    check("open 0 -> unknown", dec(0, "open", False), None)
+    check("open 1 -> unknown", dec(1, "open", False), None)
+    # lock/safe reuse "open" with invert: 2=locked -> off, 3=unlocked -> on
+    check("lock 2 (locked) -> off", dec(2, "open", True), False)
+    check("lock 3 (unlocked) -> on", dec(3, "open", True), True)
+    # "onoff": parking_brake 0=off, 1=on
+    check("onoff 0 -> off", dec(0, "onoff", False), False)
+    check("onoff 1 -> on", dec(1, "onoff", False), True)
+    # "lights": 0/1=unknown, 2=off, 3/4/5=on
+    check("lights 1 -> unknown", dec(1, "lights", False), None)
+    check("lights 2 -> off", dec(2, "lights", False), False)
+    check("lights 4 -> on", dec(4, "lights", False), True)
+    # missing value stays unknown
+    check("none -> unknown", dec(None, "open", False), None)
+    # registry wires the special encodings to the right fields
+    _pbrake = next(b for b in data.CURATED_BINARY_FLAT if b.field_name == "parking_brake")
+    check("parking_brake encoding", _pbrake.encoding, "onoff")
+    _plights = next(b for b in data.CURATED_BINARY_FLAT if b.field_name == "parking_lights")
+    check("parking_lights encoding", _plights.encoding, "lights")
+    _door = next(b for b in data.CURATED_BINARY_FLAT if b.field_name == "open_state_tailgate")
+    check("door default encoding", _door.encoding, "open")
 
     # --- raw unique_id namespaced by VIN (multi-vehicle, issue #7) --------
     print("raw unique_id namespacing:")
@@ -184,7 +215,7 @@ def main() -> int:
     check("KM -> km", data.resolve_distance_unit("KM"), "km")
     check("lowercase miles -> mi", data.resolve_distance_unit("miles"), "mi")
     check("unknown -> None", data.resolve_distance_unit("LIGHTYEARS"), None)
-    mileage = next(s for s in data.CURATED_SENSORS if s.field_name == "mileage.value")
+    mileage = next(s for s in data.CURATED_SENSORS_DOTTED if s.field_name == "mileage.value")
     check("mileage declares unit_field", mileage.unit_field, "mileage.unit")
     # a miles dataset exposes mileage.unit so the sensor can pick "mi"
     ds_mi = data.Dataset.from_json({"vin": "V", "user_id": "u", "Data": [

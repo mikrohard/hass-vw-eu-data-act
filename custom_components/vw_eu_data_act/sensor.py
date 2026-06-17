@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -23,10 +25,57 @@ from .data import (
     CuratedSensor,
     DataPoint,
     detect_dataset_format,
+    find_by_field,
     friendly_name,
     resolve_distance_unit,
 )
 from .entity import EudaEntity
+
+
+def _shorten_enum_value(dp: DataPoint, value) -> object:
+    """Shorten verbose VW enum labels for display only.
+
+    Keeps DataPoint.raw_value unchanged. Removes enum prefixes that are
+    repeated in the field name, e.g. for ``charging_state_report.current_charge_state``
+    the value ``CHARGE_STATE_CHARGING_HV_BATTERY`` becomes ``CHARGING_HV_BATTERY``.
+    """
+    if dp is None or not isinstance(value, str):
+        return value
+
+    if not re.fullmatch(r"[A-Z0-9_]+", value):
+        return value
+
+    def normalize(text: str) -> str:
+        return re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").upper()
+
+    candidates: list[str] = []
+
+    def add_candidate(text: str) -> None:
+        normalized = normalize(text)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    field_name = dp.field_name or ""
+    add_candidate(field_name)
+    for part in field_name.split("."):
+        add_candidate(part)
+
+    normalized_field = normalize(field_name)
+    for removable in ("SETTINGS_", "STATUS_", "CHARGING_STATE_REPORT_"):
+        if normalized_field.startswith(removable):
+            add_candidate(normalized_field.removeprefix(removable))
+
+    for candidate in list(candidates):
+        tokens = candidate.split("_")
+        for i in range(1, len(tokens)):
+            add_candidate("_".join(tokens[i:]))
+
+    for prefix in sorted(candidates, key=len, reverse=True):
+        full_prefix = f"{prefix}_"
+        if value.startswith(full_prefix) and len(value) > len(full_prefix):
+            return value[len(full_prefix):]
+
+    return value
 
 
 async def async_setup_entry(
@@ -72,18 +121,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _find_by_field(points: dict[str, DataPoint], field_name: str) -> DataPoint | None:
-    """Pick a single point for a (possibly duplicated) field name.
-
-    The portal's flat array is unordered and a field can appear multiple times
-    under different UUIDs with conflicting values, with no way to tell which is
-    "live". Select the smallest UUID: arbitrary but stable, so the sensor tracks
-    the same data point across refreshes instead of flip-flopping on reshuffle.
-    """
-    matches = [dp for dp in points.values() if dp.field_name == field_name]
-    return min(matches, key=lambda dp: dp.key) if matches else None
-
-
 class EudaCuratedSensor(EudaEntity, SensorEntity):
     """A curated, well-typed sensor (enabled by default)."""
 
@@ -101,35 +138,17 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         if curated.suggested_display_precision is not None:
             self._attr_suggested_display_precision = curated.suggested_display_precision
 
-    def _apply_transform(self, value):
-        """Apply configured transform to the raw value."""
-        if value is None or not self._curated.transform:
-            return value
-
-        transform = self._curated.transform
-
-        if transform == "duration_s":
-            # Already handled by parse_duration_seconds in parse_value
-            return value
-
-        if transform == "decikelvin_to_celsius":
-            from .data import decikelvin_to_celsius
-
-            return decikelvin_to_celsius(str(value))
-
-        return value
-
     @property
     def native_value(self):
         # Special handling for timestamp fields (both "mileage.timestamp" and "mileage.value.timestamp")
         if ".timestamp" in self._curated.field_name:
             base_field = self._curated.field_name.replace(".timestamp", "")
-            dp = _find_by_field(self.coordinator.data or {}, base_field)
+            dp = find_by_field(self.coordinator.data or {}, base_field)
             if dp and dp.timestamp:
                 return self._sticky(dp.timestamp)
             return self._sticky(None)
 
-        dp = _find_by_field(self.coordinator.data or {}, self._curated.field_name)
+        dp = find_by_field(self.coordinator.data or {}, self._curated.field_name)
 
         if not dp:
             return self._sticky(None)
@@ -156,7 +175,7 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 transformed = fuel_consumption_l_per_1000km_to_l_per_100km(raw_value)
                 return self._sticky(transformed)
 
-        return self._sticky(raw_value)
+        return self._sticky(_shorten_enum_value(dp, raw_value))
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -165,7 +184,7 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         # otherwise use the static curated unit.
         cur = self._curated
         if cur.unit_field:
-            dp = _find_by_field(self.coordinator.data or {}, cur.unit_field)
+            dp = find_by_field(self.coordinator.data or {}, cur.unit_field)
             if dp is not None:
                 resolver = UNIT_RESOLVERS.get(cur.unit_resolver, resolve_distance_unit)
                 resolved = resolver(dp.value)
@@ -195,7 +214,7 @@ class EudaRawSensor(EudaEntity, SensorEntity):
     @property
     def native_value(self):
         dp = (self.coordinator.data or {}).get(self._key)
-        return self._sticky(dp.value if dp else None)
+        return self._sticky(_shorten_enum_value(dp, dp.value) if dp else None)
 
     @property
     def extra_state_attributes(self) -> dict:

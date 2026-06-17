@@ -4,7 +4,7 @@ from __future__ import annotations
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_NICKNAME, DOMAIN
+from .const import BRANDS, CONF_BRAND, CONF_NICKNAME, DEFAULT_BRAND, DOMAIN
 from .coordinator import EudaCoordinator
 from .data import sticky
 
@@ -19,10 +19,12 @@ class EudaEntity(CoordinatorEntity[EudaCoordinator]):
         self._last_value = None
         vin = coordinator.vin
         name = coordinator.entry.data.get(CONF_NICKNAME) or vin
+        brand_key = coordinator.entry.data.get(CONF_BRAND, DEFAULT_BRAND)
+        brand_info = BRANDS.get(brand_key, BRANDS[DEFAULT_BRAND])
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, vin)},
             name=name,
-            manufacturer="Volkswagen",
+            manufacturer=brand_info["display_name"],
             model="EU Data Act vehicle",
             serial_number=vin,
         )

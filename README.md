@@ -1,13 +1,17 @@
-# Volkswagen EU Data Act — Home Assistant integration
+# VW Group EU Data Act — Home Assistant integration
 
 Periodically downloads your vehicle's "continuous data" from the Volkswagen
-EU Data Act portal (`eu-data-act.drivesomethinggreater.com`) and exposes it in
-Home Assistant.
+Group EU Data Act portal (`eu-data-act.drivesomethinggreater.com`) and exposes
+it in Home Assistant.
+
+**Supported brands:** Volkswagen · Audi · Škoda · SEAT · CUPRA
 
 ## Features
 
-- **Login with your VW credentials** and pick a VIN during setup (the portal is
-  queried for the vehicles on your account).
+- **Multi-brand support**: select your brand (Volkswagen, Audi, Škoda, SEAT or
+  CUPRA) during setup — each brand uses its own OIDC identity flow.
+- **Login with your brand credentials** and pick a VIN during setup (the portal
+  is queried for the vehicles on your account).
 - **Curated sensors** for the useful data points (battery SoC, target charge
   level, charge power, mileage, climate temperatures, charge state, doors
   locked, parking brake, …) — enabled by default with proper units and device
@@ -31,7 +35,8 @@ request** for your vehicle on the EU Data Act portal. The integration only
 request for you, and without an active request there will be nothing to fetch.
 
 1. Open <https://eu-data-act.drivesomethinggreater.com/> and **log in** with
-   your Volkswagen ID (the same email/password you'll use in Home Assistant).
+   your brand ID (Volkswagen ID / myAudi / myŠkoda / SEAT / CUPRA — the same
+   email/password you'll use in Home Assistant).
 2. Go to **Data clusters → Vehicle overview**.
 3. **Connect your car** to the site if it isn't already listed (follow the
    on-screen pairing/consent steps for your VIN).
@@ -39,7 +44,7 @@ request for you, and without an active request there will be nothing to fetch.
    configure a **continuous** data request with a **15-minute** frequency.
 5. Wait until the portal starts producing datasets (you'll see ZIP files appear
    in the vehicle's data delivery list, roughly every 15 minutes). The first
-   file can take a little while to show up.
+   file can take up to a few hours to show up.
 
 Once datasets are being generated, continue with the installation below.
 
@@ -59,14 +64,14 @@ Once datasets are being generated, continue with the installation below.
    - **Type / Category:** **Integration**
 
    Then click **Add**.
-4. Back in HACS, search for **Volkswagen EU Data Act**, open it, and click
+4. Back in HACS, search for **VW Group EU Data Act**, open it, and click
    **Download** (pick the latest version).
 5. **Restart Home Assistant** when prompted.
 6. Continue with [Add the integration](#add-the-integration) below.
 
 > Once the repository is published/approved you can instead use this one-click
 > link (replace with your published URL):
-> *HACS → Integrations → Explore & Download → "Volkswagen EU Data Act"*.
+> *HACS → Integrations → Explore & Download → "VW Group EU Data Act"*.
 
 ### Option B — Manual
 
@@ -77,9 +82,10 @@ Once datasets are being generated, continue with the installation below.
 
 ### Add the integration
 
-1. *Settings → Devices & Services → **Add Integration** → search "Volkswagen EU
+1. *Settings → Devices & Services → **Add Integration** → search "VW Group EU
    Data Act"*.
-2. Enter the **same VW email/password** you used on the portal, then select your
+2. **Select your brand** (Volkswagen, Audi, Škoda, SEAT or CUPRA).
+3. Enter the **same email/password** you used on the portal, then select your
    vehicle from the list.
 
 ## Notes & limitations
@@ -119,9 +125,9 @@ logger:
 
 > The portal's `/services/redirect/authentication` endpoint returns HTTP 500 for
 > non-browser clients, so the integration builds the OIDC `authorize` URL
-> directly. The login `state` defaults to country `si` / language `sl`; if your
-> account is in another locale and login misbehaves, adjust `DEFAULT_COUNTRY` /
-> `DEFAULT_LANGUAGE` in `custom_components/vw_eu_data_act/const.py`.
+> directly. If login fails, make sure you selected the **correct brand** in the
+> setup flow — each VW Group brand uses a different OIDC client ID and identity
+> flow.
 
 ## Updating the data dictionary
 
