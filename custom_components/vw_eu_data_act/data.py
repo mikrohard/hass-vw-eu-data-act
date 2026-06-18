@@ -507,7 +507,6 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:car-clock",
-        transform="timestamp",
     ),
     # === Enum/Status Sensors ===
     CuratedSensor(
@@ -953,7 +952,6 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:car-clock",
-        transform="timestamp",
     ),
     # === Enum/Status Sensors ===
     CuratedSensor(
