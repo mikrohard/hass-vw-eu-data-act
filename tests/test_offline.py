@@ -12,6 +12,7 @@ import json
 import sys
 import types
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -102,6 +103,32 @@ def main() -> int:
     check("parking_brake", _field_val(ds, "parking_brake"), True)
     check("remaining_climate_time", _field_val(ds, "remaining_climate_time"), 0.0)
     check("captured_at present", ds.captured_at is not None, True)
+
+    # --- captured_at: latest across duplicate car_captured_time entries ---
+    print("captured_at max:")
+    ds_cap = data.Dataset.from_json(
+        {
+            "vin": "V",
+            "user_id": "u",
+            "Data": [
+                {
+                    "key": "old",
+                    "dataFieldName": "car_captured_time",
+                    "value": "2026-06-10T09:16:00+00:00",
+                },
+                {
+                    "key": "new",
+                    "dataFieldName": "car_captured_time",
+                    "value": "2026-06-17T09:52:47+00:00",
+                },
+            ],
+        }
+    )
+    check(
+        "captured_at is latest",
+        ds_cap.captured_at,
+        datetime(2026, 6, 17, 9, 52, 47, tzinfo=timezone.utc),
+    )
 
     # --- duplicate field: deterministic selection regardless of order -----
     print("duplicate field selection:")

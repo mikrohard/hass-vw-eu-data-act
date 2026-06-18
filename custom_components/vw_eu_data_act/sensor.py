@@ -121,6 +121,11 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
 
     @property
     def native_value(self):
+        # car_captured_time appears in many report clusters; Dataset.from_json
+        # already picks the latest value as captured_at on the coordinator.
+        if self._curated.field_name == "car_captured_time":
+            return self._sticky(self.coordinator.captured_at)
+
         # Special handling for timestamp fields (both "mileage.timestamp" and "mileage.value.timestamp")
         if ".timestamp" in self._curated.field_name:
             base_field = self._curated.field_name.replace(".timestamp", "")
