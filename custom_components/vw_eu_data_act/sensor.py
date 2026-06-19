@@ -175,6 +175,12 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 transformed = fuel_consumption_l_per_1000km_to_l_per_100km(raw_value)
                 return self._sticky(transformed)
 
+            elif self._curated.transform == "charging_time":
+                from .data import strip_charging_time_sentinel
+
+                transformed = strip_charging_time_sentinel(raw_value)
+                return self._sticky(transformed)
+
         return self._sticky(_shorten_enum_value(dp, raw_value))
 
     @property

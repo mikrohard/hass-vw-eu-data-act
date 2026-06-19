@@ -338,6 +338,20 @@ def abs_value(value) -> int | float | None:
         return None
 
 
+def strip_charging_time_sentinel(value) -> int | None:
+    """Map the uint16 "not charging" sentinel (65535) to unknown.
+
+    ``remaining_charging_time`` reports minutes while a charge is in progress,
+    but emits the uint16 max (65535) when nothing is charging. Surface that as
+    unknown rather than a bogus ~45-day duration.
+    """
+    try:
+        minutes = int(float(value))
+    except (ValueError, TypeError):
+        return None
+    return None if minutes >= 65535 else minutes
+
+
 def fuel_consumption_l_per_1000km_to_l_per_100km(value) -> float | None:
     """Convert fuel consumption from L/1000km to L/100km.
 
@@ -603,6 +617,27 @@ CURATED_BINARY_DOTTED: tuple[CuratedBinary, ...] = (
 # ---------------------------------------------------------------------------
 
 CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
+    # === Charging & Battery ===
+    CuratedSensor("state_of_charge", "Battery", "battery", "%", "measurement"),
+    CuratedSensor("charging_state", "Charge state", icon="mdi:ev-station"),
+    CuratedSensor("charging_mode", "Charge mode", icon="mdi:ev-station"),
+    CuratedSensor("charging_reason_trigger", "Charge trigger", icon="mdi:ev-station"),
+    CuratedSensor("plug_state", "Plug state", icon="mdi:power-plug"),
+    CuratedSensor("energy_flow", "Energy flow", icon="mdi:transmission-tower"),
+    CuratedSensor(
+        "external_power_supply_state",
+        "External power supply",
+        icon="mdi:power-plug-outline",
+    ),
+    CuratedSensor(
+        "remaining_charging_time",
+        "Remaining charging time",
+        "duration",
+        "min",
+        "measurement",
+        icon="mdi:battery-clock",
+        transform="charging_time",
+    ),
     # === Distance & Range ===
     CuratedSensor(
         "mileage",
@@ -707,6 +742,15 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "measurement",
         transform="duration_s",
     ),
+    # Some (pre-ID.x) vehicles report the remaining climate time under this
+    # alternate field name, already in minutes (vs. the "0s"-style duration above).
+    CuratedSensor(
+        "remaining_climatisation_time",
+        "Remaining climate time",
+        "duration",
+        "min",
+        "measurement",
+    ),
     CuratedSensor(
         "residual_energy_in_percent",
         "Residual energy",
@@ -751,6 +795,46 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
     CuratedSensor(
         "tyre_pressure_actual_spare_tyre",
         "Tire pressure spare",
+        "pressure",
+        "bar",
+        "measurement",
+        icon="mdi:car-tire-alert",
+    ),
+    CuratedSensor(
+        "tyre_pressure_required_front_left",
+        "Tire pressure required FL",
+        "pressure",
+        "bar",
+        "measurement",
+        icon="mdi:car-tire-alert",
+    ),
+    CuratedSensor(
+        "tyre_pressure_required_front_right",
+        "Tire pressure required FR",
+        "pressure",
+        "bar",
+        "measurement",
+        icon="mdi:car-tire-alert",
+    ),
+    CuratedSensor(
+        "tyre_pressure_required_rear_left",
+        "Tire pressure required RL",
+        "pressure",
+        "bar",
+        "measurement",
+        icon="mdi:car-tire-alert",
+    ),
+    CuratedSensor(
+        "tyre_pressure_required_rear_right",
+        "Tire pressure required RR",
+        "pressure",
+        "bar",
+        "measurement",
+        icon="mdi:car-tire-alert",
+    ),
+    CuratedSensor(
+        "tyre_pressure_required_spare_tyre",
+        "Tire pressure required spare",
         "pressure",
         "bar",
         "measurement",
@@ -909,6 +993,17 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         suggested_display_precision=1,
     ),
     CuratedSensor(
+        "long_term_data_average_electr_engine_consumption",
+        "Avg electric consumption (long)",
+        None,
+        "kWh/100km",
+        "measurement",
+        icon="mdi:lightning-bolt",
+        # API reports kWh/1000km; the fuel transform's "/10" also yields per-100km.
+        transform="fuel_consumption",
+        suggested_display_precision=1,
+    ),
+    CuratedSensor(
         "long_term_data_average_speed",
         "Avg speed (long)",
         None,
@@ -954,6 +1049,17 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         suggested_display_precision=1,
     ),
     CuratedSensor(
+        "short_term_data_average_electr_engine_consumption",
+        "Avg electric consumption (short)",
+        None,
+        "kWh/100km",
+        "measurement",
+        icon="mdi:lightning-bolt",
+        # API reports kWh/1000km; the fuel transform's "/10" also yields per-100km.
+        transform="fuel_consumption",
+        suggested_display_precision=1,
+    ),
+    CuratedSensor(
         "short_term_data_travel_time",
         "Travel time (short)",
         "duration",
@@ -993,9 +1099,20 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         icon="mdi:clock",
     ),
+    CuratedSensor("lock_state", "Lock state", icon="mdi:lock"),
     # === Enum/Status Sensors ===
     CuratedSensor(
         "window_heating_state", "Window heating", icon="mdi:car-defrost-rear"
+    ),
+    CuratedSensor(
+        "window_heating_state_front",
+        "Window heating front",
+        icon="mdi:car-defrost-front",
+    ),
+    CuratedSensor(
+        "window_heating_state_rear",
+        "Window heating rear",
+        icon="mdi:car-defrost-rear",
     ),
     CuratedSensor("bem_level", "BEM level", None, None, None, icon="mdi:information"),
 )

@@ -125,6 +125,13 @@ def main() -> int:
     check("locked is curated", "locked" in data.CURATED_FIELDS, True)
     _mintemp = next(s for s in data.CURATED_SENSORS_FLAT if s.field_name == "min_temperature")
     check("min_temperature named battery", _mintemp.name, "Battery min temperature")
+    # flat (eGolf-style) state_of_charge is curated as the Battery sensor
+    check("flat soc is curated", "state_of_charge" in data.CURATED_FIELDS, True)
+    _soc = next(s for s in data.CURATED_SENSORS_FLAT if s.field_name == "state_of_charge")
+    check("flat soc device_class", _soc.device_class, "battery")
+    # remaining_charging_time's uint16 sentinel reads as unknown, not ~45 days
+    check("charging-time sentinel -> None", data.strip_charging_time_sentinel(65535), None)
+    check("charging-time value kept", data.strip_charging_time_sentinel(120), 120)
 
     # --- binary state decoding (encoding-driven, not field-name guessing) -
     print("binary decode:")
