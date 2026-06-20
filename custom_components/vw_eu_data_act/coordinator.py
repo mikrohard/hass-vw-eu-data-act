@@ -23,7 +23,7 @@ from .const import (
     POST_DATASET_BUFFER,
     RETRY_INTERVAL,
 )
-from .data import Dataset, DataPoint
+from .data import Dataset, DataPoint, stamp_source_dataset
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         self.vin: str = entry.data[CONF_VIN]
         self.identifier: str = entry.data[CONF_IDENTIFIER]
         self.latest_dataset: Dataset | None = None
+        self.latest_dataset_name: str | None = None
         self._is_initial_setup: bool = True
 
     async def _async_update_data(self) -> dict[str, DataPoint]:
@@ -124,6 +125,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                         self.vin, self.identifier, dataset_entry["name"]
                     )
                     self.latest_dataset = Dataset.from_json(payload)
+                    self.latest_dataset_name = dataset_entry["name"]
                     self._is_initial_setup = False
                     last_error = None
                     break  # Success!
@@ -187,14 +189,18 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
 
         self._reschedule(listing)
 
+        new_points = stamp_source_dataset(
+            self.latest_dataset.points, self.latest_dataset_name
+        )
+
         # Merge new data with existing to preserve missing fields
         if self.data:
             merged = dict(self.data)
-            merged.update(self.latest_dataset.points)
+            merged.update(new_points)
             return merged
 
         # First successful load
-        return self.latest_dataset.points
+        return new_points
 
     async def _async_list_with_refresh(self) -> list[dict]:
         """List datasets, self-healing a stale identifier once if needed.

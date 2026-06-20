@@ -18,6 +18,7 @@ from .data import (
     DataPoint,
     decode_binary_state,
     detect_dataset_format,
+    entity_source_attributes,
     find_by_field,
 )
 from .entity import EudaEntity
@@ -66,3 +67,8 @@ class EudaBinarySensor(EudaEntity, BinarySensorEntity):
             value, self._curated.encoding, self._curated.invert
         )
         return self._sticky(result)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        dp = find_by_field(self.coordinator.data or {}, self._curated.field_name)
+        return entity_source_attributes(dp)

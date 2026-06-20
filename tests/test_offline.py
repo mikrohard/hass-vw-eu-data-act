@@ -248,6 +248,19 @@ def main() -> int:
     dp_prose = data.DataPoint("k", "report_type", "3", "enum", None, "The enum value of report type")
     check("prose enum desc -> int kept", dp_prose.value, 3)
 
+    print("source_dataset:")
+    zip_name = "WVWZZZTESTVIN0001_20260102000000.zip"
+    stamped = data.stamp_source_dataset(
+        {"k": data.DataPoint(key="k", field_name="mileage", raw_value="100")},
+        zip_name,
+    )
+    check(
+        "entity_source_attributes",
+        data.entity_source_attributes(stamped["k"]).get("source_dataset"),
+        zip_name,
+    )
+    check("missing dataset name unchanged", data.stamp_source_dataset(stamped, None)["k"].source_dataset, zip_name)
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")
