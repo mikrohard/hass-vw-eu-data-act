@@ -25,6 +25,7 @@ from .data import (
     CuratedSensor,
     DataPoint,
     detect_dataset_format,
+    entity_source_attributes,
     find_by_field,
     friendly_name,
     resolve_distance_unit,
@@ -178,6 +179,14 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
         return self._sticky(_shorten_enum_value(dp, raw_value))
 
     @property
+    def extra_state_attributes(self) -> dict:
+        field_name = self._curated.field_name
+        if ".timestamp" in field_name:
+            field_name = field_name.replace(".timestamp", "")
+        dp = find_by_field(self.coordinator.data or {}, field_name)
+        return entity_source_attributes(dp)
+
+    @property
     def native_unit_of_measurement(self) -> str | None:
         # When a companion unit field is declared (e.g. mileage.unit), resolve
         # the unit at runtime so miles vs km is reported correctly per vehicle;
@@ -226,4 +235,5 @@ class EudaRawSensor(EudaEntity, SensorEntity):
             attrs["description"] = dp.description
         if dp.cluster:
             attrs["cluster"] = dp.cluster
+        attrs.update(entity_source_attributes(dp))
         return attrs

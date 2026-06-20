@@ -166,6 +166,8 @@ class DataPoint:
     description: str | None = None
     cluster: str | None = None
     timestamp_utc: str | None = None
+    # Portal ZIP filename that last supplied this point (issue #31).
+    source_dataset: str | None = None
 
     @property
     def value(self):
@@ -229,6 +231,24 @@ class Dataset:
     def by_field(self, field_name: str) -> DataPoint | None:
         """Return a single data point for a (possibly duplicated) field name."""
         return find_by_field(self.points, field_name)
+
+
+def stamp_source_dataset(
+    points: dict[str, DataPoint], dataset_name: str | None
+) -> dict[str, DataPoint]:
+    """Tag every point with the portal ZIP it came from."""
+    if not dataset_name:
+        return points
+    for dp in points.values():
+        dp.source_dataset = dataset_name
+    return points
+
+
+def entity_source_attributes(dp: DataPoint | None) -> dict[str, str]:
+    """Entity attributes exposing the portal ZIP that supplied a reading."""
+    if dp is None or not dp.source_dataset:
+        return {}
+    return {"source_dataset": dp.source_dataset}
 
 
 def find_by_field(
