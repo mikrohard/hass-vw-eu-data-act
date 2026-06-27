@@ -550,6 +550,14 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         None,
         icon="mdi:clock",
     ),
+    CuratedSensor(
+        "car_captured_time",
+        "Data captured",
+        "timestamp",
+        None,
+        None,
+        icon="mdi:car-clock",
+    ),
     # === Enum/Status Sensors ===
     CuratedSensor(
         "charging_state_report.current_charge_state",
@@ -992,6 +1000,14 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:clock",
+    ),
+    CuratedSensor(
+        "car_captured_time",
+        "Data captured",
+        "timestamp",
+        None,
+        None,
+        icon="mdi:car-clock",
     ),
     # === Enum/Status Sensors ===
     CuratedSensor(
