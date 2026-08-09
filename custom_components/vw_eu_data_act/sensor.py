@@ -182,6 +182,15 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
 
         raw_value = dp.value
 
+        # Drop protocol sentinels ("unsupported" / "invalid") before anything
+        # else, so they can never be transformed into a plausible measurement.
+        if self._curated.sentinels:
+            from .data import strip_sentinel
+
+            raw_value = strip_sentinel(raw_value, self._curated.sentinels)
+            if raw_value is None:
+                return self._sticky(None)
+
         # Apply transforms if specified
         if self._curated.transform:
             if self._curated.transform == "decikelvin_to_celsius":
@@ -190,10 +199,10 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 transformed = decikelvin_to_celsius(dp.raw_value)
                 return self._sticky(transformed)
 
-            elif self._curated.transform == "abs":
-                from .data import abs_value
+            elif self._curated.transform == "service_interval":
+                from .data import service_interval_remaining
 
-                transformed = abs_value(raw_value)
+                transformed = service_interval_remaining(raw_value)
                 return self._sticky(transformed)
 
             elif self._curated.transform == "fuel_consumption":

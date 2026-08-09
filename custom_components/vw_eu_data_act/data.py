@@ -325,17 +325,46 @@ def decikelvin_to_celsius(raw: str) -> float | None:
         return None
 
 
-def abs_value(value) -> int | float | None:
-    """Return absolute value, handling negative maintenance intervals.
+def service_interval_remaining(value) -> int | float | None:
+    """Normalise a ``maintenance_interval_*`` reading to "amount remaining".
 
-    Maintenance intervals can be negative (overdue). Take absolute value
-    for display, as the sign indicates past-due status.
+    The portal counts *down* through negative numbers: a vehicle with 26 200 km
+    left until its next inspection reports ``-26200``. Once the limit is passed
+    the value crosses zero and grows positive, which per the data dictionary is
+    "the distance that has been driven since then".
+
+    The polarity is confirmed by the redundant ``inspectionDistance`` field,
+    which expresses the same quantity already-signed: a dataset carrying
+    ``maintenance_interval_distance_until_inspection = -26200`` reports
+    ``inspectionDistance = 26300`` from a report cut a day earlier.
+
+    Negating (rather than taking the absolute value) keeps overdue services
+    distinguishable: they stay negative instead of rendering identically to a
+    service that is still due.
     """
     try:
-        abs_val = abs(float(value))
-        return int(abs_val) if abs_val == int(abs_val) else abs_val
+        remaining = -float(value)
     except (ValueError, TypeError):
         return None
+    return int(remaining) if remaining == int(remaining) else remaining
+
+
+def strip_sentinel(value, sentinels: tuple[int, ...]):
+    """Return ``None`` when a numeric reading is a protocol sentinel.
+
+    Several fields reserve low integers for "vehicle does not support this"
+    and "reading invalid" rather than delivering a measurement. They must not
+    reach the state machine as numbers: a car with no tyre-pressure sensors
+    reports ``1`` on every tyre field, and 1.0 bar is a plausible-looking value
+    for a dangerously flat tyre.
+    """
+    if not sentinels or value is None or isinstance(value, bool):
+        return value
+    try:
+        numeric = float(value)
+    except (ValueError, TypeError):
+        return value
+    return None if numeric in sentinels else value
 
 
 def fuel_consumption_l_per_1000km_to_l_per_100km(value) -> float | None:
@@ -374,6 +403,9 @@ class CuratedSensor:
     unit_resolver: str = "distance"
     # number of decimal places to show (None = auto)
     suggested_display_precision: int | None = None
+    # raw integers that mean "unsupported" / "invalid" rather than a reading;
+    # they are mapped to unknown instead of being shown as a measurement.
+    sentinels: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -731,6 +763,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_front_right",
@@ -739,6 +772,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_rear_left",
@@ -747,6 +781,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_rear_right",
@@ -755,6 +790,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_spare_tyre",
@@ -763,6 +799,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_front_left",
@@ -771,6 +808,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_front_right",
@@ -779,6 +817,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_rear_left",
@@ -787,6 +826,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_rear_right",
@@ -795,6 +835,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_spare_tyre",
@@ -803,6 +844,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     # === Window Positions (0-100%) ===
     CuratedSensor(
@@ -854,7 +896,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "d",
         "measurement",
         icon="mdi:calendar-clock",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -864,7 +906,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "d",
         "measurement",
         icon="mdi:oil",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -874,7 +916,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "km",
         "measurement",
         icon="mdi:car-wrench",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -884,7 +926,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "km",
         "measurement",
         icon="mdi:oil",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     # === Trip Statistics - Long Term ===

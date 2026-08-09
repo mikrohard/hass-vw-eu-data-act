@@ -275,6 +275,48 @@ def main() -> int:
     dp_prose = data.DataPoint("k", "report_type", "3", "enum", None, "The enum value of report type")
     check("prose enum desc -> int kept", dp_prose.value, 3)
 
+    # --- protocol sentinels ----------------------------------------------
+    # 0 = "unsupported", 1 = "invalid". A car without tyre-pressure sensors
+    # reports 1 on every tyre field, and "1.0 bar" reads as a dangerously flat
+    # tyre rather than as missing data.
+    print("sentinel stripping:")
+    check("0 -> None", data.strip_sentinel(0, (0, 1)), None)
+    check("1 -> None", data.strip_sentinel(1, (0, 1)), None)
+    check("real reading kept", data.strip_sentinel(2.4, (0, 1)), 2.4)
+    check("no sentinels declared -> passthrough", data.strip_sentinel(1, ()), 1)
+    check("None stays None", data.strip_sentinel(None, (0, 1)), None)
+    check("non-numeric passthrough", data.strip_sentinel("OFF", (0, 1)), "OFF")
+    check("bool untouched", data.strip_sentinel(True, (0, 1)), True)
+
+    tyre = [c for c in data.CURATED_SENSORS_FLAT if c.field_name.startswith("tyre_pressure")]
+    check("all tyre sensors declare sentinels", all(c.sentinels == (0, 1) for c in tyre), True)
+    check("tyre sensors covered", len(tyre) >= 10, True)
+
+    # --- service intervals -------------------------------------------------
+    # The portal counts down through negative numbers and crosses zero when the
+    # service becomes overdue, so the sign carries the meaning.
+    print("service intervals:")
+    check("26200 km remaining", data.service_interval_remaining(-26200), 26200)
+    check("270 days remaining", data.service_interval_remaining("-270"), 270)
+    check("overdue stays negative", data.service_interval_remaining(500), -500)
+    check("at the limit", data.service_interval_remaining(0), 0)
+    check("non-numeric -> None", data.service_interval_remaining("n/a"), None)
+    check("None -> None", data.service_interval_remaining(None), None)
+    check(
+        "overdue distinguishable from remaining",
+        data.service_interval_remaining(500) != data.service_interval_remaining(-500),
+        True,
+    )
+
+    maint = [
+        c
+        for c in data.CURATED_SENSORS_FLAT
+        if c.field_name.startswith("maintenance_interval")
+    ]
+    check("maintenance sensors use service_interval",
+          all(c.transform == "service_interval" for c in maint), True)
+    check("maintenance sensors covered", len(maint), 4)
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")
