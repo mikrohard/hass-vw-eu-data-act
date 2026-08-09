@@ -349,6 +349,21 @@ def service_interval_remaining(value) -> int | float | None:
     return int(remaining) if remaining == int(remaining) else remaining
 
 
+def curated_has_reading(dp: "DataPoint", curated: "CuratedSensor") -> bool:
+    """Whether a data point currently carries a usable reading.
+
+    A field can be listed in the dataset and still hold nothing: an absent
+    ``value`` member, an empty string, or a sentinel meaning the vehicle does
+    not have the hardware. A car without a spoiler, a sunroof or tyre-pressure
+    sensors reports those fields every cycle and never with a value, so
+    creating entities for them only produces permanently-empty rows.
+    """
+    value = dp.value
+    if curated.sentinels:
+        value = strip_sentinel(value, curated.sentinels)
+    return value is not None
+
+
 def strip_sentinel(value, sentinels: tuple[int, ...]):
     """Return ``None`` when a numeric reading is a protocol sentinel.
 

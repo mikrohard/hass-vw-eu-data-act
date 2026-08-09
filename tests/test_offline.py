@@ -317,6 +317,46 @@ def main() -> int:
           all(c.transform == "service_interval" for c in maint), True)
     check("maintenance sensors covered", len(maint), 4)
 
+    # --- entities with nothing to report ----------------------------------
+    # A field being listed in the dataset does not mean the vehicle has the
+    # hardware; without this gate a car with no TPMS/sunroof/spoiler gets
+    # permanently empty entities.
+    print("empty-entity suppression:")
+    tyre_sensor = next(
+        c for c in data.CURATED_SENSORS_FLAT
+        if c.field_name == "tyre_pressure_actual_front_left"
+    )
+    plain = next(c for c in data.CURATED_SENSORS_FLAT if c.field_name == "mileage")
+
+    def _dp(field, raw):
+        return data.DataPoint(field, field, raw, "int")
+
+    check(
+        "sentinel reading -> no entity",
+        data.curated_has_reading(_dp("tyre_pressure_actual_front_left", "1"), tyre_sensor),
+        False,
+    )
+    check(
+        "real reading -> entity",
+        data.curated_has_reading(_dp("tyre_pressure_actual_front_left", "24"), tyre_sensor),
+        True,
+    )
+    check(
+        "empty string -> no entity",
+        data.curated_has_reading(_dp("mileage", ""), plain),
+        False,
+    )
+    check("zero is a reading", data.curated_has_reading(_dp("mileage", "0"), plain), True)
+    check(
+        "unsentinelled 1 is a reading",
+        data.curated_has_reading(_dp("mileage", "1"), plain),
+        True,
+    )
+    # Binary equivalent: 0/1 are "unsupported"/"invalid" under the "open"
+    # encoding, but real states under "onoff".
+    check("binary sentinel -> None", data.decode_binary_state(1, "open"), None)
+    check("parking brake 0 is a state", data.decode_binary_state(0, "onoff"), False)
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")
