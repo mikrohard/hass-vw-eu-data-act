@@ -137,6 +137,95 @@ def enum_members(description: str | None) -> list[str]:
     return members if len(members) >= 2 else []
 
 
+# Dictionary unit strings -> (HA unit, device class). Only units the raw value
+# is *already* expressed in are listed: a raw sensor performs no arithmetic, so
+# labelling deci-Kelvin as "°C" or L/1000km as "L/100km" would state a figure
+# the entity does not hold. Scaled units are therefore mapped to None and left
+# to the curated sensors, which do convert.
+_RAW_UNITS: dict[str, tuple[str, str | None]] = {
+    "%": ("%", None),
+    "km": ("km", "distance"),
+    "m": ("m", "distance"),
+    "min": ("min", "duration"),
+    "day": ("d", "duration"),
+    "days": ("d", "duration"),
+    "h": ("h", "duration"),
+    "km/h": ("km/h", "speed"),
+    "kmperhour": ("km/h", "speed"),
+    "v": ("V", "voltage"),
+    "a": ("A", "current"),
+    "kw": ("kW", "power"),
+    "kwh": ("kWh", "energy"),
+    "bar": ("bar", "pressure"),
+    "kpa": ("kPa", "pressure"),
+    "l": ("L", "volume_storage"),
+    "°c": ("°C", "temperature"),
+    "1/min": ("rpm", None),
+}
+
+
+def normalize_unit(raw_unit: str | None) -> tuple[str | None, str | None]:
+    """Map a dictionary unit string to (HA unit, device class).
+
+    The dictionary writes units inconsistently — "(V)", "km", "(°C)",
+    "kmPerHour" — and some entries are prose ("Hex (Interpreted)") or list
+    several alternatives ("10kPA / Bar / PSI/ kPA") rather than naming one.
+    Anything not unambiguously a unit the raw value already uses returns
+    (None, None) so the entity simply carries no unit.
+    """
+    if not raw_unit:
+        return (None, None)
+    # Repair degree signs that were double-encoded during PDF extraction.
+    text = raw_unit.replace("Â°", "°").strip()
+    # "(km)" and "km" are the same unit written two ways.
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    if "/" in text and text.count("/") > 1:
+        return (None, None)  # "10kPA / Bar / PSI/ kPA" — no single answer
+    return _RAW_UNITS.get(text.lower(), (None, None))
+
+
+def _looks_like_value_list(text: str) -> bool:
+    """Whether a description just lists the permitted values.
+
+    ``trueness`` is documented as "fair, good, none, weak" — the values it can
+    take, not a description of the field. Naming an entity after that reads as
+    nonsense, so the field name wins instead.
+    """
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) < 3:
+        return False
+    return all(p and len(p.split()) <= 2 for p in parts)
+
+
+def raw_entity_name(field_name: str, description: str | None = None) -> str:
+    """Readable name for a raw data point.
+
+    Raw field names are machine identifiers — "boardnetBatteryVoltageIndication",
+    "active_warnings_in_instrument_cluster_fff" — so the dictionary description
+    ("current boardnet battery voltage") makes a far better label. Falls back to
+    un-camel-casing the field name when there is no usable prose.
+    """
+    text = (description or "").strip()
+    # Descriptions that enumerate the allowed values ("fair, good, none, weak",
+    # or an UPPER_SNAKE member list) are not prose and read terribly as names.
+    if text and not enum_members(text) and not _looks_like_value_list(text):
+        # First sentence only — but "[0.1 km]" must not count as a full stop,
+        # so require the period to end the string or be followed by a space.
+        sentence = re.split(r"\.(?:\s|$)", text, maxsplit=1)[0].strip()
+        if sentence and len(sentence) <= 60:
+            return sentence[0].upper() + sentence[1:]
+
+    split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", field_name).replace("_", " ")
+    words = [w for w in split.split() if w]
+    if not words:
+        return field_name
+    # Sentence case, matching the underscore-separated names: only the first
+    # word is capitalised, but acronyms (FFF, SCR) keep their case.
+    tail = [w if w.isupper() and len(w) > 1 else w.lower() for w in words[1:]]
+    return " ".join([words[0][0].upper() + words[0][1:]] + tail)
+
+
 def friendly_name(field_name: str, description: str | None = None) -> str:
     """Entity name for a raw data point.
 

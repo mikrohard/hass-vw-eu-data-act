@@ -375,6 +375,63 @@ def main() -> int:
         False,
     )
 
+    # --- raw sensor units --------------------------------------------------
+    # The dictionary writes units inconsistently and some entries are prose or
+    # a list of alternatives; only units the raw value already uses may be
+    # attached, because raw sensors do no arithmetic.
+    print("raw units:")
+    check("(V) -> V", data.normalize_unit("(V)"), ("V", "voltage"))
+    check("km -> km", data.normalize_unit("km"), ("km", "distance"))
+    check("(km) -> km", data.normalize_unit("(km)"), ("km", "distance"))
+    check("kmPerHour -> km/h", data.normalize_unit("kmPerHour"), ("km/h", "speed"))
+    check("double-encoded degree repaired", data.normalize_unit("(Â°C)"), ("°C", "temperature"))
+    check("prose unit dropped", data.normalize_unit("Hex (Interpreted)"), (None, None))
+    check("ambiguous unit dropped", data.normalize_unit("10kPA / Bar / PSI/ kPA"), (None, None))
+    check("scaled unit dropped", data.normalize_unit("kwH/1000km"), (None, None))
+    check("deci-kelvin dropped", data.normalize_unit("dK"), (None, None))
+    check("empty unit", data.normalize_unit(""), (None, None))
+
+    dd = data.load_dictionary()
+    check(
+        "dictionary has no double-encoded degrees",
+        any("Â°" in v.get("unit", "") for v in dd.values()),
+        False,
+    )
+
+    # --- raw sensor names --------------------------------------------------
+    print("raw names:")
+    check(
+        "description beats camelCase field",
+        data.raw_entity_name("boardnetBatteryVoltageIndication", "current boardnet battery voltage"),
+        "Current boardnet battery voltage",
+    )
+    check(
+        "decimal point is not a sentence end",
+        data.raw_entity_name("short_term_data_range_gain_distance",
+                             "Gained range distance in [0.1 km] during short term trip"),
+        "Gained range distance in [0.1 km] during short term trip",
+    )
+    check(
+        "first sentence only",
+        data.raw_entity_name("f", "Short label. Followed by more prose."),
+        "Short label",
+    )
+    check(
+        "value list is not a name",
+        data.raw_entity_name("trueness", "fair, good, none, weak"),
+        "Trueness",
+    )
+    check(
+        "no description -> un-camel-cased field",
+        data.raw_entity_name("boardnetBatteryVoltageIndication"),
+        "Boardnet battery voltage indication",
+    )
+    check(
+        "underscores become spaces",
+        data.raw_entity_name("scope_potential_total"),
+        "Scope potential total",
+    )
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")

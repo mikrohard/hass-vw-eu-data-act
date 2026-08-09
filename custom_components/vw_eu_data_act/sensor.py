@@ -27,7 +27,8 @@ from .data import (
     curated_has_reading,
     detect_dataset_format,
     find_by_field,
-    friendly_name,
+    normalize_unit,
+    raw_entity_name,
     resolve_distance_unit,
 )
 from .entity import EudaEntity
@@ -252,10 +253,16 @@ class EudaRawSensor(EudaEntity, SensorEntity):
         # Namespace by VIN: dataset keys are shared across vehicles, so a bare
         # key collides between config entries (see raw_unique_id / migration).
         self._attr_unique_id = raw_unique_id(coordinator.vin, key)
-        self._attr_name = friendly_name(dp.field_name, dp.description)
-        # only attach a unit when the value is numeric
-        if dp.unit and dp.type_hint in ("int", "float"):
-            self._attr_native_unit_of_measurement = dp.unit
+        self._attr_name = raw_entity_name(dp.field_name, dp.description)
+        # Only attach a unit when the value is numeric and the dictionary names
+        # a unit the raw value is already expressed in; see normalize_unit.
+        if dp.type_hint in ("int", "float"):
+            unit, device_class = normalize_unit(dp.unit)
+            if unit:
+                self._attr_native_unit_of_measurement = unit
+                self._attr_state_class = SensorStateClass.MEASUREMENT
+                if device_class:
+                    self._attr_device_class = SensorDeviceClass(device_class)
 
     @property
     def native_value(self):
