@@ -1156,20 +1156,14 @@ CURATED_BINARY_FLAT: tuple[CuratedBinary, ...] = (
         invert=True,
         icon="mdi:shield-car",
     ),
-    CuratedBinary(
-        "safe_state_tailgate",
-        "Tailgate safe",
-        "safety",
-        invert=True,
-        icon="mdi:shield-car",
-    ),
-    CuratedBinary(
-        "safe_state_front_engine_bonnet",
-        "Hood safe",
-        "safety",
-        invert=True,
-        icon="mdi:shield-car",
-    ),
+    # safe_state_tailgate and safe_state_front_engine_bonnet are deliberately
+    # absent. Unlike the doors, the data dictionary documents no "safe (2)"
+    # value for them — only unsupported (0), invalid (1) and unsafe (3) — and
+    # vehicles report a constant 3 while the door fields alongside them report
+    # 2. Exposed as safety sensors they would sit permanently on "problem" with
+    # the bonnet shut (open_state_front_engine_bonnet = 3, i.e. closed), which
+    # is a false alarm rather than a reading. They remain available as raw
+    # diagnostic sensors for anyone who wants the underlying value.
     # === Window States (value 2=open, 3=closed, 0=unsupported, 1=invalid) ===
     CuratedBinary(
         "state_front_left_door_window_lifter",

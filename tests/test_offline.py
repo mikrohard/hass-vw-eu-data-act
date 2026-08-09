@@ -357,6 +357,24 @@ def main() -> int:
     check("binary sentinel -> None", data.decode_binary_state(1, "open"), None)
     check("parking brake 0 is a state", data.decode_binary_state(0, "onoff"), False)
 
+    # Doors document safe (2) / unsafe (3) and report 2; the tailgate and
+    # bonnet document no "safe" value and report a constant 3, so exposing
+    # them as safety sensors pins them to "problem" with the bonnet shut.
+    safe_fields = {
+        c.field_name for c in data.CURATED_BINARY_FLAT if "safe_state" in c.field_name
+    }
+    check(
+        "no safety sensor for tailgate/bonnet",
+        safe_fields & {"safe_state_tailgate", "safe_state_front_engine_bonnet"},
+        set(),
+    )
+    check("door safety sensors kept", len(safe_fields), 3)
+    check(
+        "a door reporting safe(2) is not a problem",
+        data.decode_binary_state(2, "open", invert=True),
+        False,
+    )
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")
