@@ -590,6 +590,10 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         "window_heating_state", "Window heating", icon="mdi:car-defrost-rear"
     ),
     CuratedSensor("bem_level", "BEM level", None, None, None, icon="mdi:information"),
+    # === Taigo / ICE vehicle specific fields ===
+    CuratedSensor("inspectionDistance", "Inspection distance", "distance", "km", "measurement", icon="mdi:car-wrench", transform="abs", suggested_display_precision=0),
+    CuratedSensor("outsideTemperatureIndication", "Outside temperature", "temperature", "°C", "measurement"),
+    CuratedSensor("boardnetBatteryVoltageIndication", "Board net battery", "voltage", "V", "measurement", icon="mdi:car-battery"),
 )
 
 CURATED_BINARY_DOTTED: tuple[CuratedBinary, ...] = (
