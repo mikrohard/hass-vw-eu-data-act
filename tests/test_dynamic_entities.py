@@ -128,3 +128,24 @@ async def test_binary_sensor_appears_on_later_dataset(hass) -> None:
 
     unique_ids = {getattr(e, "_attr_unique_id", None) for e in added}
     assert f"{coordinator.vin}_locked" in unique_ids
+
+
+async def test_last_dataset_sensor_reports_zip_name(hass) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator.data = {}
+    coordinator.latest_dataset_name = "WVWZZZE1ZLP010257_20260101000000.zip"
+
+    added: list = []
+    await sensor_platform.async_setup_entry(
+        hass, coordinator.entry, lambda ents: added.extend(ents)
+    )
+
+    sensors = [
+        e
+        for e in added
+        if getattr(e, "_attr_unique_id", None) == f"{coordinator.vin}_last_dataset"
+    ]
+    assert len(sensors) == 1
+    assert sensors[0].native_value == "WVWZZZE1ZLP010257_20260101000000.zip"
+    # Exactly one extra entity, not one attribute per entity.
+    assert all("source_dataset" not in (e.extra_state_attributes or {}) for e in added)

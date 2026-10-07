@@ -71,3 +71,22 @@ async def test_plain_api_error_does_not_raise_reauth(hass) -> None:
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+async def test_successful_refresh_records_dataset_name(hass) -> None:
+    # The "Last dataset" diagnostic sensor reads this, so it must follow the
+    # ZIP the coordinator actually loaded.
+    name = "WVWZZZTESTVIN0001_20260101000000.zip"
+    client = MagicMock()
+    client.async_list_datasets = AsyncMock(
+        return_value=[{"name": name, "createdOn": "2026-01-01T00:00:00Z"}]
+    )
+    client.async_download_dataset = AsyncMock(
+        return_value={"vin": "WVWZZZTESTVIN0001", "Data": []}
+    )
+    coordinator = _make_coordinator(hass, client)
+    assert coordinator.latest_dataset_name is None
+
+    await coordinator._async_update_data()
+
+    assert coordinator.latest_dataset_name == name

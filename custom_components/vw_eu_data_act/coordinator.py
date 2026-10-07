@@ -83,6 +83,8 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
         self.identifier: str = entry.data[CONF_IDENTIFIER]
         self.latest_dataset: Dataset | None = None
         self.captured_at: datetime | None = None
+        # Portal ZIP filename of the dataset currently in use (issue #31).
+        self.latest_dataset_name: str | None = None
         self._is_initial_setup: bool = True
 
     async def _async_update_data(self) -> dict[str, DataPoint]:
@@ -125,6 +127,7 @@ class EudaCoordinator(DataUpdateCoordinator[dict[str, DataPoint]]):
                         self.vin, self.identifier, dataset_entry["name"]
                     )
                     self.latest_dataset = Dataset.from_json(payload)
+                    self.latest_dataset_name = dataset_entry["name"]
                     self._is_initial_setup = False
                     last_error = None
                     break  # Success!
