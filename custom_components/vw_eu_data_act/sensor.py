@@ -234,6 +234,12 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 # class needs a tz-aware datetime.
                 return self._sticky(parse_timestamp(dp.raw_value))
 
+            elif self._curated.transform == "charging_time":
+                from .data import strip_charging_time_sentinel
+
+                transformed = strip_charging_time_sentinel(raw_value)
+                return self._sticky(transformed)
+
         return self._sticky(_shorten_enum_value(dp, raw_value))
 
     @property
