@@ -24,10 +24,12 @@ from .data import (
     UNIT_RESOLVERS,
     CuratedSensor,
     DataPoint,
+    curated_has_reading,
     detect_dataset_format,
     find_by_field,
-    friendly_name,
+    normalize_unit,
     parse_timestamp,
+    raw_entity_name,
     resolve_distance_unit,
     tenths_to_units,
 )
@@ -98,7 +100,6 @@ async def async_setup_entry(
     @callback
     def _add_new_entities() -> None:
         points: dict[str, DataPoint] = coordinator.data or {}
-        present_fields = {dp.field_name for dp in points.values()}
 
         # Detect dataset format and select appropriate curated group
         format_type = detect_dataset_format(points)
@@ -122,10 +123,20 @@ async def async_setup_entry(
             # Special handling for timestamp sensors (e.g., "mileage.timestamp" or "mileage.value.timestamp")
             if ".timestamp" in curated.field_name:
                 base_field = curated.field_name.replace(".timestamp", "")
-                if base_field in present_fields:
+                base_dp = find_by_field(points, base_field)
+                if base_dp is not None and base_dp.timestamp is not None:
                     entities.append(EudaCuratedSensor(coordinator, curated))
                     added_curated.add(curated.field_name)
-            elif curated.field_name in present_fields:
+                continue
+
+            # Being listed in the dataset is not enough: a vehicle without the
+            # hardware reports the field every cycle with no value or a
+            # sentinel. Waiting for a real reading keeps those entities out of
+            # the registry entirely instead of showing them permanently empty.
+            # This loop re-runs on every refresh, so the entity still appears
+            # the moment a usable value turns up.
+            dp = find_by_field(points, curated.field_name)
+            if dp is not None and curated_has_reading(dp, curated):
                 entities.append(EudaCuratedSensor(coordinator, curated))
                 added_curated.add(curated.field_name)
 
@@ -186,6 +197,15 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
 
         raw_value = dp.value
 
+        # Drop protocol sentinels ("unsupported" / "invalid") before anything
+        # else, so they can never be transformed into a plausible measurement.
+        if self._curated.sentinels:
+            from .data import strip_sentinel
+
+            raw_value = strip_sentinel(raw_value, self._curated.sentinels)
+            if raw_value is None:
+                return self._sticky(None)
+
         # Apply transforms if specified
         if self._curated.transform:
             if self._curated.transform == "decikelvin_to_celsius":
@@ -194,10 +214,10 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 transformed = decikelvin_to_celsius(dp.raw_value)
                 return self._sticky(transformed)
 
-            elif self._curated.transform == "abs":
-                from .data import abs_value
+            elif self._curated.transform == "service_interval":
+                from .data import service_interval_remaining
 
-                transformed = abs_value(raw_value)
+                transformed = service_interval_remaining(raw_value)
                 return self._sticky(transformed)
 
             elif self._curated.transform == "fuel_consumption":
@@ -245,10 +265,16 @@ class EudaRawSensor(EudaEntity, SensorEntity):
         # Namespace by VIN: dataset keys are shared across vehicles, so a bare
         # key collides between config entries (see raw_unique_id / migration).
         self._attr_unique_id = raw_unique_id(coordinator.vin, key)
-        self._attr_name = friendly_name(dp.field_name, dp.description)
-        # only attach a unit when the value is numeric
-        if dp.unit and dp.type_hint in ("int", "float"):
-            self._attr_native_unit_of_measurement = dp.unit
+        self._attr_name = raw_entity_name(dp.field_name, dp.description)
+        # Only attach a unit when the value is numeric and the dictionary names
+        # a unit the raw value is already expressed in; see normalize_unit.
+        if dp.type_hint in ("int", "float"):
+            unit, device_class = normalize_unit(dp.unit)
+            if unit:
+                self._attr_native_unit_of_measurement = unit
+                self._attr_state_class = SensorStateClass.MEASUREMENT
+                if device_class:
+                    self._attr_device_class = SensorDeviceClass(device_class)
 
     @property
     def native_value(self):

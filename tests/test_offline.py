@@ -323,6 +323,163 @@ def main() -> int:
     dp_prose = data.DataPoint("k", "report_type", "3", "enum", None, "The enum value of report type")
     check("prose enum desc -> int kept", dp_prose.value, 3)
 
+    # --- protocol sentinels ----------------------------------------------
+    # 0 = "unsupported", 1 = "invalid". A car without tyre-pressure sensors
+    # reports 1 on every tyre field, and "1.0 bar" reads as a dangerously flat
+    # tyre rather than as missing data.
+    print("sentinel stripping:")
+    check("0 -> None", data.strip_sentinel(0, (0, 1)), None)
+    check("1 -> None", data.strip_sentinel(1, (0, 1)), None)
+    check("real reading kept", data.strip_sentinel(2.4, (0, 1)), 2.4)
+    check("no sentinels declared -> passthrough", data.strip_sentinel(1, ()), 1)
+    check("None stays None", data.strip_sentinel(None, (0, 1)), None)
+    check("non-numeric passthrough", data.strip_sentinel("OFF", (0, 1)), "OFF")
+    check("bool untouched", data.strip_sentinel(True, (0, 1)), True)
+
+    tyre = [c for c in data.CURATED_SENSORS_FLAT if c.field_name.startswith("tyre_pressure")]
+    check("all tyre sensors declare sentinels", all(c.sentinels == (0, 1) for c in tyre), True)
+    check("tyre sensors covered", len(tyre) >= 10, True)
+
+    # --- service intervals -------------------------------------------------
+    # The portal counts down through negative numbers and crosses zero when the
+    # service becomes overdue, so the sign carries the meaning.
+    print("service intervals:")
+    check("26200 km remaining", data.service_interval_remaining(-26200), 26200)
+    check("270 days remaining", data.service_interval_remaining("-270"), 270)
+    check("overdue stays negative", data.service_interval_remaining(500), -500)
+    check("at the limit", data.service_interval_remaining(0), 0)
+    check("non-numeric -> None", data.service_interval_remaining("n/a"), None)
+    check("None -> None", data.service_interval_remaining(None), None)
+    check(
+        "overdue distinguishable from remaining",
+        data.service_interval_remaining(500) != data.service_interval_remaining(-500),
+        True,
+    )
+
+    maint = [
+        c
+        for c in data.CURATED_SENSORS_FLAT
+        if c.field_name.startswith("maintenance_interval")
+    ]
+    check("maintenance sensors use service_interval",
+          all(c.transform == "service_interval" for c in maint), True)
+    check("maintenance sensors covered", len(maint), 4)
+
+    # --- entities with nothing to report ----------------------------------
+    # A field being listed in the dataset does not mean the vehicle has the
+    # hardware; without this gate a car with no TPMS/sunroof/spoiler gets
+    # permanently empty entities.
+    print("empty-entity suppression:")
+    tyre_sensor = next(
+        c for c in data.CURATED_SENSORS_FLAT
+        if c.field_name == "tyre_pressure_actual_front_left"
+    )
+    plain = next(c for c in data.CURATED_SENSORS_FLAT if c.field_name == "mileage")
+
+    def _dp(field, raw):
+        return data.DataPoint(field, field, raw, "int")
+
+    check(
+        "sentinel reading -> no entity",
+        data.curated_has_reading(_dp("tyre_pressure_actual_front_left", "1"), tyre_sensor),
+        False,
+    )
+    check(
+        "real reading -> entity",
+        data.curated_has_reading(_dp("tyre_pressure_actual_front_left", "24"), tyre_sensor),
+        True,
+    )
+    check(
+        "empty string -> no entity",
+        data.curated_has_reading(_dp("mileage", ""), plain),
+        False,
+    )
+    check("zero is a reading", data.curated_has_reading(_dp("mileage", "0"), plain), True)
+    check(
+        "unsentinelled 1 is a reading",
+        data.curated_has_reading(_dp("mileage", "1"), plain),
+        True,
+    )
+    # Binary equivalent: 0/1 are "unsupported"/"invalid" under the "open"
+    # encoding, but real states under "onoff".
+    check("binary sentinel -> None", data.decode_binary_state(1, "open"), None)
+    check("parking brake 0 is a state", data.decode_binary_state(0, "onoff"), False)
+
+    # Doors document safe (2) / unsafe (3) and report 2; the tailgate and
+    # bonnet document no "safe" value and report a constant 3, so exposing
+    # them as safety sensors pins them to "problem" with the bonnet shut.
+    safe_fields = {
+        c.field_name for c in data.CURATED_BINARY_FLAT if "safe_state" in c.field_name
+    }
+    check(
+        "no safety sensor for tailgate/bonnet",
+        safe_fields & {"safe_state_tailgate", "safe_state_front_engine_bonnet"},
+        set(),
+    )
+    check("door safety sensors kept", len(safe_fields), 3)
+    check(
+        "a door reporting safe(2) is not a problem",
+        data.decode_binary_state(2, "open", invert=True),
+        False,
+    )
+
+    # --- raw sensor units --------------------------------------------------
+    # The dictionary writes units inconsistently and some entries are prose or
+    # a list of alternatives; only units the raw value already uses may be
+    # attached, because raw sensors do no arithmetic.
+    print("raw units:")
+    check("(V) -> V", data.normalize_unit("(V)"), ("V", "voltage"))
+    check("km -> km", data.normalize_unit("km"), ("km", "distance"))
+    check("(km) -> km", data.normalize_unit("(km)"), ("km", "distance"))
+    check("kmPerHour -> km/h", data.normalize_unit("kmPerHour"), ("km/h", "speed"))
+    check("double-encoded degree repaired", data.normalize_unit("(Â°C)"), ("°C", "temperature"))
+    check("prose unit dropped", data.normalize_unit("Hex (Interpreted)"), (None, None))
+    check("ambiguous unit dropped", data.normalize_unit("10kPA / Bar / PSI/ kPA"), (None, None))
+    check("scaled unit dropped", data.normalize_unit("kwH/1000km"), (None, None))
+    check("deci-kelvin dropped", data.normalize_unit("dK"), (None, None))
+    check("empty unit", data.normalize_unit(""), (None, None))
+
+    dd = data.load_dictionary()
+    check(
+        "dictionary has no double-encoded degrees",
+        any("Â°" in v.get("unit", "") for v in dd.values()),
+        False,
+    )
+
+    # --- raw sensor names --------------------------------------------------
+    print("raw names:")
+    check(
+        "description beats camelCase field",
+        data.raw_entity_name("boardnetBatteryVoltageIndication", "current boardnet battery voltage"),
+        "Current boardnet battery voltage",
+    )
+    check(
+        "decimal point is not a sentence end",
+        data.raw_entity_name("short_term_data_range_gain_distance",
+                             "Gained range distance in [0.1 km] during short term trip"),
+        "Gained range distance in [0.1 km] during short term trip",
+    )
+    check(
+        "first sentence only",
+        data.raw_entity_name("f", "Short label. Followed by more prose."),
+        "Short label",
+    )
+    check(
+        "value list is not a name",
+        data.raw_entity_name("trueness", "fair, good, none, weak"),
+        "Trueness",
+    )
+    check(
+        "no description -> un-camel-cased field",
+        data.raw_entity_name("boardnetBatteryVoltageIndication"),
+        "Boardnet battery voltage indication",
+    )
+    check(
+        "underscores become spaces",
+        data.raw_entity_name("scope_potential_total"),
+        "Scope potential total",
+    )
+
     print()
     if failures:
         print(f"FAILED: {len(failures)} -> {failures}")

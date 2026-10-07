@@ -3931,7 +3931,7 @@
   "description": "current oil temperature",
   "name": "primaryEngineOilTemperatureIndication",
   "type": "int",
-  "unit": "(Â°C)"
+  "unit": "(°C)"
  },
  "7b567b84-b1e1-3542-b074-49e03e87a0c9": {
   "cluster": "All Data",
@@ -5730,7 +5730,7 @@
   "description": "current outside air temperature",
   "name": "outsideTemperatureIndication",
   "type": "int",
-  "unit": "(Â°C)"
+  "unit": "(°C)"
  },
  "b8850eb7-e7d3-337c-838b-1788a532bc5e": {
   "cluster": "All Data, Charging",

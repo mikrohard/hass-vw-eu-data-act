@@ -137,6 +137,95 @@ def enum_members(description: str | None) -> list[str]:
     return members if len(members) >= 2 else []
 
 
+# Dictionary unit strings -> (HA unit, device class). Only units the raw value
+# is *already* expressed in are listed: a raw sensor performs no arithmetic, so
+# labelling deci-Kelvin as "°C" or L/1000km as "L/100km" would state a figure
+# the entity does not hold. Scaled units are therefore mapped to None and left
+# to the curated sensors, which do convert.
+_RAW_UNITS: dict[str, tuple[str, str | None]] = {
+    "%": ("%", None),
+    "km": ("km", "distance"),
+    "m": ("m", "distance"),
+    "min": ("min", "duration"),
+    "day": ("d", "duration"),
+    "days": ("d", "duration"),
+    "h": ("h", "duration"),
+    "km/h": ("km/h", "speed"),
+    "kmperhour": ("km/h", "speed"),
+    "v": ("V", "voltage"),
+    "a": ("A", "current"),
+    "kw": ("kW", "power"),
+    "kwh": ("kWh", "energy"),
+    "bar": ("bar", "pressure"),
+    "kpa": ("kPa", "pressure"),
+    "l": ("L", "volume_storage"),
+    "°c": ("°C", "temperature"),
+    "1/min": ("rpm", None),
+}
+
+
+def normalize_unit(raw_unit: str | None) -> tuple[str | None, str | None]:
+    """Map a dictionary unit string to (HA unit, device class).
+
+    The dictionary writes units inconsistently — "(V)", "km", "(°C)",
+    "kmPerHour" — and some entries are prose ("Hex (Interpreted)") or list
+    several alternatives ("10kPA / Bar / PSI/ kPA") rather than naming one.
+    Anything not unambiguously a unit the raw value already uses returns
+    (None, None) so the entity simply carries no unit.
+    """
+    if not raw_unit:
+        return (None, None)
+    # Repair degree signs that were double-encoded during PDF extraction.
+    text = raw_unit.replace("Â°", "°").strip()
+    # "(km)" and "km" are the same unit written two ways.
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    if "/" in text and text.count("/") > 1:
+        return (None, None)  # "10kPA / Bar / PSI/ kPA" — no single answer
+    return _RAW_UNITS.get(text.lower(), (None, None))
+
+
+def _looks_like_value_list(text: str) -> bool:
+    """Whether a description just lists the permitted values.
+
+    ``trueness`` is documented as "fair, good, none, weak" — the values it can
+    take, not a description of the field. Naming an entity after that reads as
+    nonsense, so the field name wins instead.
+    """
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) < 3:
+        return False
+    return all(p and len(p.split()) <= 2 for p in parts)
+
+
+def raw_entity_name(field_name: str, description: str | None = None) -> str:
+    """Readable name for a raw data point.
+
+    Raw field names are machine identifiers — "boardnetBatteryVoltageIndication",
+    "active_warnings_in_instrument_cluster_fff" — so the dictionary description
+    ("current boardnet battery voltage") makes a far better label. Falls back to
+    un-camel-casing the field name when there is no usable prose.
+    """
+    text = (description or "").strip()
+    # Descriptions that enumerate the allowed values ("fair, good, none, weak",
+    # or an UPPER_SNAKE member list) are not prose and read terribly as names.
+    if text and not enum_members(text) and not _looks_like_value_list(text):
+        # First sentence only — but "[0.1 km]" must not count as a full stop,
+        # so require the period to end the string or be followed by a space.
+        sentence = re.split(r"\.(?:\s|$)", text, maxsplit=1)[0].strip()
+        if sentence and len(sentence) <= 60:
+            return sentence[0].upper() + sentence[1:]
+
+    split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", field_name).replace("_", " ")
+    words = [w for w in split.split() if w]
+    if not words:
+        return field_name
+    # Sentence case, matching the underscore-separated names: only the first
+    # word is capitalised, but acronyms (FFF, SCR) keep their case.
+    tail = [w if w.isupper() and len(w) > 1 else w.lower() for w in words[1:]]
+    return " ".join([words[0][0].upper() + words[0][1:]] + tail)
+
+
 def friendly_name(field_name: str, description: str | None = None) -> str:
     """Entity name for a raw data point.
 
@@ -330,17 +419,61 @@ def decikelvin_to_celsius(raw: str) -> float | None:
         return None
 
 
-def abs_value(value) -> int | float | None:
-    """Return absolute value, handling negative maintenance intervals.
+def service_interval_remaining(value) -> int | float | None:
+    """Normalise a ``maintenance_interval_*`` reading to "amount remaining".
 
-    Maintenance intervals can be negative (overdue). Take absolute value
-    for display, as the sign indicates past-due status.
+    The portal counts *down* through negative numbers: a vehicle with 26 200 km
+    left until its next inspection reports ``-26200``. Once the limit is passed
+    the value crosses zero and grows positive, which per the data dictionary is
+    "the distance that has been driven since then".
+
+    The polarity is confirmed by the redundant ``inspectionDistance`` field,
+    which expresses the same quantity already-signed: a dataset carrying
+    ``maintenance_interval_distance_until_inspection = -26200`` reports
+    ``inspectionDistance = 26300`` from a report cut a day earlier.
+
+    Negating (rather than taking the absolute value) keeps overdue services
+    distinguishable: they stay negative instead of rendering identically to a
+    service that is still due.
     """
     try:
-        abs_val = abs(float(value))
-        return int(abs_val) if abs_val == int(abs_val) else abs_val
+        remaining = -float(value)
     except (ValueError, TypeError):
         return None
+    return int(remaining) if remaining == int(remaining) else remaining
+
+
+def curated_has_reading(dp: "DataPoint", curated: "CuratedSensor") -> bool:
+    """Whether a data point currently carries a usable reading.
+
+    A field can be listed in the dataset and still hold nothing: an absent
+    ``value`` member, an empty string, or a sentinel meaning the vehicle does
+    not have the hardware. A car without a spoiler, a sunroof or tyre-pressure
+    sensors reports those fields every cycle and never with a value, so
+    creating entities for them only produces permanently-empty rows.
+    """
+    value = dp.value
+    if curated.sentinels:
+        value = strip_sentinel(value, curated.sentinels)
+    return value is not None
+
+
+def strip_sentinel(value, sentinels: tuple[int, ...]):
+    """Return ``None`` when a numeric reading is a protocol sentinel.
+
+    Several fields reserve low integers for "vehicle does not support this"
+    and "reading invalid" rather than delivering a measurement. They must not
+    reach the state machine as numbers: a car with no tyre-pressure sensors
+    reports ``1`` on every tyre field, and 1.0 bar is a plausible-looking value
+    for a dangerously flat tyre.
+    """
+    if not sentinels or value is None or isinstance(value, bool):
+        return value
+    try:
+        numeric = float(value)
+    except (ValueError, TypeError):
+        return value
+    return None if numeric in sentinels else value
 
 
 def fuel_consumption_l_per_1000km_to_l_per_100km(value) -> float | None:
@@ -396,6 +529,9 @@ class CuratedSensor:
     suggested_display_precision: int | None = None
     # file the entity under Diagnostic in the UI (still enabled by default)
     diagnostic: bool = False
+    # raw integers that mean "unsupported" / "invalid" rather than a reading;
+    # they are mapped to unknown instead of being shown as a measurement.
+    sentinels: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -862,6 +998,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_front_right",
@@ -870,6 +1007,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_rear_left",
@@ -878,6 +1016,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_rear_right",
@@ -886,6 +1025,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_actual_spare_tyre",
@@ -894,6 +1034,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "bar",
         "measurement",
         icon="mdi:car-tire-alert",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_front_left",
@@ -902,6 +1043,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_front_right",
@@ -910,6 +1052,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_rear_left",
@@ -918,6 +1061,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_rear_right",
@@ -926,6 +1070,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     CuratedSensor(
         "tyre_pressure_differential_spare_tyre",
@@ -934,6 +1079,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         None,
         None,
         icon="mdi:gauge",
+        sentinels=(0, 1),
     ),
     # === Window Positions (0-100%) ===
     CuratedSensor(
@@ -985,7 +1131,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "d",
         "measurement",
         icon="mdi:calendar-clock",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -995,7 +1141,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "d",
         "measurement",
         icon="mdi:oil",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -1005,7 +1151,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "km",
         "measurement",
         icon="mdi:car-wrench",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     CuratedSensor(
@@ -1015,7 +1161,7 @@ CURATED_SENSORS_FLAT: tuple[CuratedSensor, ...] = (
         "km",
         "measurement",
         icon="mdi:oil",
-        transform="abs",
+        transform="service_interval",
         suggested_display_precision=0,
     ),
     # === Trip Statistics - Long Term ===
@@ -1230,20 +1376,14 @@ CURATED_BINARY_FLAT: tuple[CuratedBinary, ...] = (
         invert=True,
         icon="mdi:shield-car",
     ),
-    CuratedBinary(
-        "safe_state_tailgate",
-        "Tailgate safe",
-        "safety",
-        invert=True,
-        icon="mdi:shield-car",
-    ),
-    CuratedBinary(
-        "safe_state_front_engine_bonnet",
-        "Hood safe",
-        "safety",
-        invert=True,
-        icon="mdi:shield-car",
-    ),
+    # safe_state_tailgate and safe_state_front_engine_bonnet are deliberately
+    # absent. Unlike the doors, the data dictionary documents no "safe (2)"
+    # value for them — only unsupported (0), invalid (1) and unsafe (3) — and
+    # vehicles report a constant 3 while the door fields alongside them report
+    # 2. Exposed as safety sensors they would sit permanently on "problem" with
+    # the bonnet shut (open_state_front_engine_bonnet = 3, i.e. closed), which
+    # is a false alarm rather than a reading. They remain available as raw
+    # diagnostic sensors for anyone who wants the underlying value.
     # === Window States (value 2=open, 3=closed, 0=unsupported, 1=invalid) ===
     CuratedBinary(
         "state_front_left_door_window_lifter",
