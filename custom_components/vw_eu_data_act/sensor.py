@@ -27,7 +27,9 @@ from .data import (
     detect_dataset_format,
     find_by_field,
     friendly_name,
+    parse_timestamp,
     resolve_distance_unit,
+    tenths_to_units,
 )
 from .entity import EudaEntity
 
@@ -159,6 +161,8 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
             self._attr_state_class = SensorStateClass(curated.state_class)
         if curated.suggested_display_precision is not None:
             self._attr_suggested_display_precision = curated.suggested_display_precision
+        if curated.diagnostic:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
@@ -201,6 +205,14 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
 
                 transformed = fuel_consumption_l_per_1000km_to_l_per_100km(raw_value)
                 return self._sticky(transformed)
+
+            elif self._curated.transform == "tenths":
+                return self._sticky(tenths_to_units(raw_value))
+
+            elif self._curated.transform == "timestamp":
+                # ISO strings stay strings in parse_value; a timestamp device
+                # class needs a tz-aware datetime.
+                return self._sticky(parse_timestamp(dp.raw_value))
 
         return self._sticky(_shorten_enum_value(dp, raw_value))
 

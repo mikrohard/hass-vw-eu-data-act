@@ -265,6 +265,11 @@ def _parse_timestamp(raw: str) -> datetime | None:
         return None
 
 
+def parse_timestamp(raw: str | None) -> datetime | None:
+    """Public wrapper so platforms can parse ISO / epoch-millis timestamps."""
+    return _parse_timestamp(raw or "")
+
+
 # ---------------------------------------------------------------------------
 # Curated entity registry  (plain strings -> translated to HA enums in platforms)
 # ---------------------------------------------------------------------------
@@ -351,6 +356,21 @@ def fuel_consumption_l_per_1000km_to_l_per_100km(value) -> float | None:
 
 
 # Named unit resolvers selectable per curated sensor via ``unit_resolver``.
+def tenths_to_units(value) -> float | None:
+    """Convert a value reported in tenths (e.g. 0.1 kWh steps) to whole units.
+
+    ``energy_contents.*.physical_value`` arrives as e.g. "483.5" for 48.35 kWh;
+    the dictionary documents no unit, the scale was inferred from an ID.3 pack.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        # round away binary float noise (5.9 / 10 -> 0.5900000000000001)
+        return round(float(value) / 10, 6)
+    except (TypeError, ValueError):
+        return None
+
+
 UNIT_RESOLVERS = {
     "distance": resolve_distance_unit,
     "charge_rate": resolve_charge_rate_unit,
@@ -374,6 +394,8 @@ class CuratedSensor:
     unit_resolver: str = "distance"
     # number of decimal places to show (None = auto)
     suggested_display_precision: int | None = None
+    # file the entity under Diagnostic in the UI (still enabled by default)
+    diagnostic: bool = False
 
 
 @dataclass(frozen=True)
@@ -387,11 +409,18 @@ class CuratedBinary:
     # "open"   - 2=active, 3=inactive, 0/1=unknown  (doors, windows, locks, …)
     # "onoff"  - 0=off, 1=on                         (parking_brake)
     # "lights" - 2=off, 3/4/5=on, 0/1=unknown        (parking_lights)
+    # "enum"   - string labels listed in on_values / off_values; others unknown
     encoding: str = "open"
+    on_values: tuple[str, ...] = ()
+    off_values: tuple[str, ...] = ()
 
 
 def decode_binary_state(
-    value, encoding: str = "open", invert: bool = False
+    value,
+    encoding: str = "open",
+    invert: bool = False,
+    on_values: tuple[str, ...] = (),
+    off_values: tuple[str, ...] = (),
 ) -> bool | None:
     """Decode a curated binary field's raw value into on / off / unknown.
 
@@ -404,6 +433,9 @@ def decode_binary_state(
                  doors, windows, sunroofs and lock/safe states.
       "onoff"  - 0 = off, 1 = on (e.g. parking_brake).
       "lights" - 0/1 = unsupported/invalid; 2 = off; 3/4/5 = on (parking_lights).
+      "enum"   - the value is an enum label; ``on_values`` / ``off_values`` list
+                 the labels that mean on / off, anything else (e.g. *_INVALID)
+                 is unknown.
 
     Plain booleans are returned as-is regardless of ``encoding``. ``invert``
     flips a decoded True/False (a "lock" sensor reads on when *un*locked); it
@@ -412,6 +444,13 @@ def decode_binary_state(
     """
     if isinstance(value, bool):
         result: bool | None = value
+    elif isinstance(value, str):
+        if value in on_values:
+            result = True
+        elif value in off_values:
+            result = False
+        else:
+            result = None
     elif isinstance(value, int):
         if encoding == "onoff":
             result = value == 1
@@ -494,6 +533,50 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         transform="duration_s",
         icon="mdi:battery-clock",
     ),
+    CuratedSensor(
+        "energy_contents.current_energy_content.physical_value",
+        "Battery energy content",
+        "energy_storage",
+        "kWh",
+        "measurement",
+        icon="mdi:battery-medium",
+        transform="tenths",
+        suggested_display_precision=2,
+    ),
+    CuratedSensor(
+        "energy_contents.maximal_energy_content.physical_value",
+        "Battery max energy content",
+        "energy_storage",
+        "kWh",
+        "measurement",
+        icon="mdi:battery-heart-variant",
+        transform="tenths",
+        suggested_display_precision=2,
+    ),
+    # === Charging timer (preferred charging times / profile) ===
+    CuratedSensor(
+        "profile_state_report.next_charging_timer_information.estimated_start_time",
+        "Next charging start",
+        "timestamp",
+        None,
+        None,
+        icon="mdi:clock-start",
+        transform="timestamp",
+    ),
+    CuratedSensor(
+        "profile_state_report.next_charging_timer_information.estimated_finish_time",
+        "Next charging finish",
+        "timestamp",
+        None,
+        None,
+        icon="mdi:clock-end",
+        transform="timestamp",
+    ),
+    CuratedSensor(
+        "profile_state_report.next_charging_timer_information.target_reachability",
+        "Target charge reachability",
+        icon="mdi:battery-check",
+    ),
     # === Distance & Range ===
     CuratedSensor(
         "mileage.value",
@@ -533,6 +616,31 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         "%",
         "measurement",
         icon="mdi:battery",
+    ),
+    # === Consumption model (range prediction inputs) ===
+    # The dictionary gives no unit for these. Like energy_contents in the same
+    # consumption report they arrive in tenths: raw 8.3 / 5.9 on an ID.3 is
+    # 0.83 / 0.59 kWh/100 km, which matches a few hundred watts of climate
+    # and vehicle-network draw. kWh/100 km itself is still an assumption.
+    CuratedSensor(
+        "additional_consumptions.interior_climatization_consumption",
+        "Climate consumption",
+        None,
+        "kWh/100km",
+        "measurement",
+        icon="mdi:air-conditioner",
+        transform="tenths",
+        suggested_display_precision=2,
+    ),
+    CuratedSensor(
+        "additional_consumptions.residual_consumption",
+        "Residual consumption",
+        None,
+        "kWh/100km",
+        "measurement",
+        icon="mdi:car-electric",
+        transform="tenths",
+        suggested_display_precision=2,
     ),
     # === Temperature ===
     CuratedSensor(
@@ -581,15 +689,28 @@ CURATED_SENSORS_DOTTED: tuple[CuratedSensor, ...] = (
         icon="mdi:ev-station",
     ),
     CuratedSensor(
+        "charging_state_report.profile_charge_reason",
+        "Profile charge reason",
+        icon="mdi:ev-station",
+    ),
+    CuratedSensor(
         "settings.charge_mode_selection", "Charge mode selection", icon="mdi:cog"
     ),
     CuratedSensor(
         "settings.max_charge_current_ac", "Max AC charge current", icon="mdi:current-ac"
     ),
     CuratedSensor(
+        "settings.auto_unlock_ac", "Plug auto unlock", icon="mdi:power-plug-off"
+    ),
+    CuratedSensor(
         "window_heating_state", "Window heating", icon="mdi:car-defrost-rear"
     ),
     CuratedSensor("bem_level", "BEM level", None, None, None, icon="mdi:information"),
+    # Why the car sent this report (charging, clamp 15 on/off, climatisation,
+    # other). Useful when debugging refresh timing, so filed under Diagnostic.
+    CuratedSensor(
+        "update_reason", "Update reason", icon="mdi:update", diagnostic=True
+    ),
 )
 
 CURATED_BINARY_DOTTED: tuple[CuratedBinary, ...] = (
@@ -603,6 +724,16 @@ CURATED_BINARY_DOTTED: tuple[CuratedBinary, ...] = (
         None,
         icon="mdi:car-brake-parking",
         encoding="onoff",
+    ),
+    # === Battery care mode (BCAM) ===
+    CuratedBinary(
+        "setting.bcam_activation",
+        "Battery care mode",
+        None,
+        icon="mdi:battery-heart-variant",
+        encoding="enum",
+        on_values=("BCAM_ACTIVATION_ACTIVATED",),
+        off_values=("BCAM_ACTIVATION_DEACTIVATED",),
     ),
 )
 

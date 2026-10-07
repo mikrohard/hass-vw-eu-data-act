@@ -176,6 +176,54 @@ def main() -> int:
     check("lights 4 -> on", dec(4, "lights", False), True)
     # missing value stays unknown
     check("none -> unknown", dec(None, "open", False), None)
+    # "enum": string labels mapped through on_values / off_values
+    _on = ("BCAM_ACTIVATION_ACTIVATED",)
+    _off = ("BCAM_ACTIVATION_DEACTIVATED",)
+    check("enum on", dec("BCAM_ACTIVATION_ACTIVATED", "enum", False, _on, _off), True)
+    check("enum off", dec("BCAM_ACTIVATION_DEACTIVATED", "enum", False, _on, _off), False)
+    check("enum invalid -> unknown", dec("BCAM_ACTIVATION_INVALID", "enum", False, _on, _off), None)
+    check("enum invert", dec("BCAM_ACTIVATION_ACTIVATED", "enum", True, _on, _off), False)
+    _bcam = next(b for b in data.CURATED_BINARY_DOTTED if b.field_name == "setting.bcam_activation")
+    check("bcam encoding", _bcam.encoding, "enum")
+    check("bcam on_values", _bcam.on_values, _on)
+
+    # --- ID.3 curated additions: energy content / timers / consumption -----
+    print("ID.3 curated additions:")
+    check("tenths 483.5 -> 48.35", data.tenths_to_units(483.5), 48.35)
+    check("tenths str", data.tenths_to_units("237.5"), 23.75)
+    check("tenths int", data.tenths_to_units(10), 1.0)
+    check("tenths None", data.tenths_to_units(None), None)
+    check("tenths bool -> None", data.tenths_to_units(True), None)
+    check("tenths junk -> None", data.tenths_to_units("n/a"), None)
+    _ts = data.parse_timestamp("2026-09-17T22:24:00Z")
+    check("parse_timestamp iso Z", _ts, datetime(2026, 9, 17, 22, 24, tzinfo=timezone.utc))
+    check("parse_timestamp tz-aware", _ts.tzinfo is not None, True)
+    check("parse_timestamp None", data.parse_timestamp(None), None)
+    check("parse_timestamp junk", data.parse_timestamp("soon"), None)
+    _dotted = {c.field_name: c for c in data.CURATED_SENSORS_DOTTED}
+    for _f in (
+        "energy_contents.current_energy_content.physical_value",
+        "energy_contents.maximal_energy_content.physical_value",
+        "profile_state_report.next_charging_timer_information.estimated_start_time",
+        "profile_state_report.next_charging_timer_information.estimated_finish_time",
+        "profile_state_report.next_charging_timer_information.target_reachability",
+        "charging_state_report.profile_charge_reason",
+        "settings.auto_unlock_ac",
+        "additional_consumptions.interior_climatization_consumption",
+        "additional_consumptions.residual_consumption",
+        "update_reason",
+    ):
+        check(f"{_f} curated", _f in _dotted, True)
+    check("energy content transform", _dotted["energy_contents.current_energy_content.physical_value"].transform, "tenths")
+    check("energy content unit", _dotted["energy_contents.maximal_energy_content.physical_value"].unit, "kWh")
+    check("climate consumption transform", _dotted["additional_consumptions.interior_climatization_consumption"].transform, "tenths")
+    check("residual consumption transform", _dotted["additional_consumptions.residual_consumption"].transform, "tenths")
+    check("timer transform", _dotted["profile_state_report.next_charging_timer_information.estimated_finish_time"].transform, "timestamp")
+    check("timer device class", _dotted["profile_state_report.next_charging_timer_information.estimated_finish_time"].device_class, "timestamp")
+    check("update_reason diagnostic", _dotted["update_reason"].diagnostic, True)
+    check("soc not diagnostic", _dotted["battery_state_report.soc"].diagnostic, False)
+    # slope consumption deliberately left raw (unit / meaning undocumented)
+    check("slope stays raw", "slope_consumption_values.ascent_slope_consumption.physical_value" in data.CURATED_FIELDS, False)
     # registry wires the special encodings to the right fields
     _pbrake = next(b for b in data.CURATED_BINARY_FLAT if b.field_name == "parking_brake")
     check("parking_brake encoding", _pbrake.encoding, "onoff")

@@ -80,6 +80,10 @@ class EudaBinarySensor(EudaEntity, BinarySensorEntity):
         dp = find_by_field(self.coordinator.data or {}, self._curated.field_name)
         value = dp.value if dp is not None else None
         result = decode_binary_state(
-            value, self._curated.encoding, self._curated.invert
+            value,
+            self._curated.encoding,
+            self._curated.invert,
+            on_values=self._curated.on_values,
+            off_values=self._curated.off_values,
         )
         return self._sticky(result)
