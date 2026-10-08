@@ -1,7 +1,7 @@
 {
   "domain": "vw_eu_data_act",
   "name": "VW Group EU Data Act",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "codeowners": [],
   "config_flow": true,
   "dependencies": [],
