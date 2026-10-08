@@ -98,10 +98,17 @@ METADATA_PATH = "/proxy_api/euda-apim/datarequest/vehicles/{vin}/metadata/partia
 LIST_PATH = "/proxy_api/euda-apim/datadelivery/vehicles/{vin}/{identifier}/list"
 DOWNLOAD_PATH = "/proxy_api/euda-apim/datadelivery/vehicles/{vin}/{identifier}/download"
 
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
-)
+def _integration_version() -> str:
+    """Read the canonical integration version from the HA manifest."""
+    try:
+        manifest = json.loads(Path(__file__).with_name("manifest.json").read_text("utf-8"))
+    except (OSError, ValueError, TypeError):
+        return "unknown"
+    if not isinstance(manifest, dict):
+        return "unknown"
+    return manifest.get("version", "unknown")
+
+USER_AGENT = f"{DOMAIN}/{_integration_version()}"
 
 # --- Config entry keys ----------------------------------------------------
 CONF_EMAIL = "email"

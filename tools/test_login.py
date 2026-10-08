@@ -145,18 +145,13 @@ async def run_dump(api, mods, email: str, password: str) -> int:
     session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar())
     client = api.EudaApiClient(session, email, password)
     try:
-        # prime portal cookies
-        async with await client._get(f"{const.BASE_URL}/") as resp:
-            await resp.read()
-        print("cookies after priming:", [c.key for c in session.cookie_jar])
-
         from urllib.parse import urljoin
 
         authorize_url = client._build_authorize_url()
         print(f"\nauthorize_url = {authorize_url}")
         async with await client._get(authorize_url) as resp:
             signin_url, signin_html = str(resp.url), await resp.text()
-        dump("2_signin", signin_url, signin_html)
+        dump("1_signin", signin_url, signin_html)
 
         # POST the email only (no password) to reach the password page.
         fields, action = api._login_fields(signin_html)
@@ -166,7 +161,7 @@ async def run_dump(api, mods, email: str, password: str) -> int:
             urljoin(signin_url, action or ""), data=fields, headers={"User-Agent": api.USER_AGENT}
         ) as resp:
             auth_url, auth_html = str(resp.url), await resp.text()
-        dump("3_authenticate", auth_url, auth_html)
+        dump("2_authenticate", auth_url, auth_html)
 
         fields2, action2 = api._login_fields(auth_html)
         print(f"\nstep3 extracted: action={action2} fields={sorted(fields2)}")

@@ -210,14 +210,6 @@ class EudaApiClient:
         self._logged_in = True
 
     async def _do_login(self) -> None:
-        # 0. Prime the portal session (the browser loads the site first; this
-        #    sets the AEM load-balancer/session cookies the callback needs).
-        try:
-            async with await self._get(f"{BASE_URL}/") as resp:
-                await resp.read()
-        except aiohttp.ClientError as err:
-            _LOGGER.debug("login step0: priming GET failed (ignored): %s", err)
-
         # 1. Start the OIDC flow directly at the identity provider. We build the
         #    authorize URL ourselves because the portal's
         #    /services/redirect/authentication servlet returns HTTP 500 for

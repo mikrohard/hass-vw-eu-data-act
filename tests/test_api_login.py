@@ -69,9 +69,8 @@ class FakeSession:
 
 
 def _login_responses(final: FakeResponse) -> list[FakeResponse]:
-    """The four responses _do_login consumes: prime, authorize, identifier, credentials."""
+    """The three responses _do_login consumes: authorize, identifier, credentials."""
     return [
-        FakeResponse(200, "", "https://datamanagement.apps.emea.vwapps.io/"),
         FakeResponse(200, SIGNIN_HTML, "https://identity.vwgroup.io/signin-service/v1/x/login"),
         FakeResponse(
             200,
@@ -108,7 +107,6 @@ async def test_login_transient_status_on_signin_page_is_retryable(status: int) -
     # broken form / bad credentials.
     session = FakeSession(
         [
-            FakeResponse(200, "", "https://datamanagement.apps.emea.vwapps.io/"),
             FakeResponse(status, "", "https://identity.vwgroup.io/signin-service/v1/x/login"),
         ]
     )
@@ -125,7 +123,6 @@ async def test_login_transient_status_on_signin_page_is_retryable(status: int) -
 async def test_login_transient_status_on_identifier_step_is_retryable(status: int) -> None:
     session = FakeSession(
         [
-            FakeResponse(200, "", "https://datamanagement.apps.emea.vwapps.io/"),
             FakeResponse(200, SIGNIN_HTML, "https://identity.vwgroup.io/signin-service/v1/x/login"),
             FakeResponse(
                 status,
