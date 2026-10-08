@@ -152,6 +152,11 @@ async def async_setup_entry(
         if entities:
             async_add_entities(entities)
 
+    # One diagnostic sensor answers "which portal ZIP is HA showing?" without
+    # an attribute on every entity (which would write a state row per entity
+    # per refresh).
+    async_add_entities([EudaLastDatasetSensor(coordinator)])
+
     _add_new_entities()
     entry.async_on_unload(coordinator.async_add_listener(_add_new_entities))
 
@@ -256,6 +261,22 @@ class EudaCuratedSensor(EudaEntity, SensorEntity):
                 if resolved:
                     return resolved
         return cur.unit
+
+
+class EudaLastDatasetSensor(EudaEntity, SensorEntity):
+    """Diagnostic: filename of the portal ZIP the current data came from."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:folder-zip-outline"
+    _attr_name = "Last dataset"
+
+    def __init__(self, coordinator: EudaCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.vin}_last_dataset"
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.latest_dataset_name
 
 
 class EudaRawSensor(EudaEntity, SensorEntity):
