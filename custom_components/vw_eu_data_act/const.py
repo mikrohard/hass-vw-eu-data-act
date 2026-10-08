@@ -1,7 +1,9 @@
 """Constants for the VW EU Data Act integration."""
 from __future__ import annotations
 
+import json
 from datetime import timedelta
+from pathlib import Path
 
 DOMAIN = "vw_eu_data_act"
 
