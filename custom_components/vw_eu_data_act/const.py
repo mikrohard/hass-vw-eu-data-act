@@ -18,7 +18,10 @@ def raw_unique_id(vin: str, key: str) -> str:
     return f"{vin}_{key}"
 
 # --- Portal / OIDC endpoints ---------------------------------------------
-BASE_URL = "https://eu-data-act.drivesomethinggreater.com"
+# The portal moved from eu-data-act.drivesomethinggreater.com; the old host
+# now answers every request with a 301 to the new one.
+BASE_URL = "https://eu-data-act.vwgroup-datahub.com"
+LEGACY_BASE_URL = "https://eu-data-act.drivesomethinggreater.com"
 IDENTITY_BASE = "https://identity.vwgroup.io"
 
 CALLBACK_LOGIN_PATH = "/services/callbacklogin"
@@ -28,7 +31,10 @@ CALLBACK_LOGIN_PATH = "/services/callbacklogin"
 # non-browser clients (it depends on AEM browser session state).
 OIDC_AUTHORIZE_URL = IDENTITY_BASE + "/oidc/v1/authorize"
 OIDC_SCOPE = "openid cars profile"
-OIDC_REDIRECT_URI = BASE_URL + "/login"
+# The redirect_uri registered for the OIDC clients is still on the legacy host;
+# the identity provider rejects unregistered URIs, and the legacy host 301s the
+# code on to the new portal, so keep it until the clients are re-registered.
+OIDC_REDIRECT_URI = LEGACY_BASE_URL + "/login"
 
 # --- Multi-brand configuration --------------------------------------------
 # Each brand has its own client_id and state string for the OIDC flow.

@@ -21,7 +21,11 @@ from __future__ import annotations
 import pytest
 
 from custom_components.vw_eu_data_act.api import ApiError, AuthError, EudaApiClient
-from custom_components.vw_eu_data_act.const import BASE_URL, CALLBACK_LOGIN_PATH
+from custom_components.vw_eu_data_act.const import (
+    BASE_URL,
+    CALLBACK_LOGIN_PATH,
+    LEGACY_BASE_URL,
+)
 
 AUTHENTICATE_URL = "https://identity.vwgroup.io/signin-service/v1/x/login/authenticate"
 CALLBACK_URL = f"{BASE_URL}{CALLBACK_LOGIN_PATH}?code=abc&state=xyz"
@@ -147,6 +151,27 @@ async def test_login_stops_at_portal_callback_and_skips_cms_page() -> None:
     assert session.calls[4][2]["headers"]["Referer"] == f"{BASE_URL}/login?code=abc&state=xyz"
     assert hop1.released and hop2.released
     assert not callback.released  # handed back to the caller's ``async with``
+
+
+async def test_login_follows_legacy_host_redirect_to_new_portal_callback() -> None:
+    # The registered redirect_uri is still on the legacy host, which 301s to
+    # the new portal. The callback on the new host must be recognised, not
+    # followed through to the CMS landing page.
+    legacy_login = f"{LEGACY_BASE_URL}/login?code=abc&state=xyz"
+    new_login = f"{BASE_URL}/login?code=abc&state=xyz"
+    hop1 = FakeResponse(303, "", AUTHENTICATE_URL, location=legacy_login)
+    hop2 = FakeResponse(301, "", legacy_login, location=new_login)
+    hop3 = FakeResponse(
+        302, "", new_login, location=CALLBACK_LOGIN_PATH + "?code=abc&state=xyz"
+    )
+    callback = _callback_response(access_token="jwt")
+    session = FakeSession(_login_responses(hop1, hop2, hop3, callback))
+    client = EudaApiClient(session, "user@example.com", "secret")
+
+    await client.async_login()
+
+    assert [u for _, u, _ in session.calls[3:]] == [legacy_login, new_login, CALLBACK_URL]
+    assert not callback.released
 
 
 async def test_login_callback_without_session_cookie_is_auth_error() -> None:

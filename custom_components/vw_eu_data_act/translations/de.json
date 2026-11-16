@@ -10,7 +10,7 @@
       },
       "credentials": {
         "title": "Anmeldung",
-        "description": "Geben Sie Ihre VW-ID Zugangsdaten ein (dieselben wie auf eu-data-act.drivesomethinggreater.com).",
+        "description": "Geben Sie Ihre VW-ID Zugangsdaten ein (dieselben wie auf eu-data-act.vwgroup-datahub.com).",
         "data": {
           "email": "E-Mail",
           "password": "Passwort"
@@ -33,7 +33,7 @@
     "error": {
       "invalid_auth": "E-Mail oder Passwort falsch. Bei Škoda/Audi/SEAT/CUPRA stellen Sie sicher, dass die richtige Marke ausgewählt ist.",
       "cannot_connect": "Verbindung zum EU Data Act Portal nicht möglich.",
-      "no_vehicles": "Keine Fahrzeuge für dieses Konto gefunden. Stellen Sie sicher, dass Ihr Fahrzeug auf eu-data-act.drivesomethinggreater.com verknüpft ist.",
+      "no_vehicles": "Keine Fahrzeuge für dieses Konto gefunden. Stellen Sie sicher, dass Ihr Fahrzeug auf eu-data-act.vwgroup-datahub.com verknüpft ist.",
       "unknown": "Ein unerwarteter Fehler ist aufgetreten."
     },
     "abort": {
