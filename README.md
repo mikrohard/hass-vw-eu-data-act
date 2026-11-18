@@ -1,7 +1,7 @@
 # VW Group EU Data Act — Home Assistant integration
 
 Periodically downloads your vehicle's "continuous data" from the Volkswagen
-Group EU Data Act portal (`eu-data-act.drivesomethinggreater.com`) and exposes
+Group EU Data Act portal (`eu-data-act.vwgroup-datahub.com`) and exposes
 it in Home Assistant.
 
 **Supported brands:** Volkswagen · Audi · Škoda · SEAT · CUPRA
@@ -34,7 +34,7 @@ request** for your vehicle on the EU Data Act portal. The integration only
 *downloads* the datasets the portal generates — it cannot create the data
 request for you, and without an active request there will be nothing to fetch.
 
-1. Open <https://eu-data-act.drivesomethinggreater.com/> and **log in** with
+1. Open <https://eu-data-act.vwgroup-datahub.com/> and **log in** with
    your brand ID (Volkswagen ID / myAudi / myŠkoda / SEAT / CUPRA — the same
    email/password you'll use in Home Assistant).
 2. Go to **Data clusters → Vehicle overview**.

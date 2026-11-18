@@ -15,6 +15,7 @@ import aiohttp
 from .const import (
     BASE_URL,
     CALLBACK_LOGIN_PATH,
+    LEGACY_BASE_URL,
     DOWNLOAD_PATH,
     LIST_PATH,
     METADATA_PATH,
@@ -61,9 +62,9 @@ def _is_transient_login_status(status: int) -> bool:
 # Redirect statuses the identity provider / portal use while bouncing the
 # browser back after the credentials POST. All of them are followed with a GET.
 _LOGIN_REDIRECT_STATUSES = frozenset({301, 302, 303})
-# Observed chain is 6 hops (authenticate -> oauth/sso -> consent -> oauth
-# callback/success -> portal /login -> /services/callbacklogin); anything much
-# longer is a loop.
+# Observed chain is 7 hops (authenticate -> oauth/sso -> consent -> oauth
+# callback/success -> legacy portal /login -> 301 new portal /login ->
+# /services/callbacklogin); anything much longer is a loop.
 _MAX_LOGIN_REDIRECTS = 10
 # Cookie the portal callback sets once the OIDC code has been exchanged.
 _SESSION_COOKIE = "access_token"
@@ -74,12 +75,13 @@ def _redact_query(url: str) -> str:
     return url.split("?", 1)[0]
 
 
+_PORTAL_HOSTS = frozenset(urlparse(u).netloc for u in (BASE_URL, LEGACY_BASE_URL))
+
+
 def _is_portal_callback(url: str) -> bool:
     """True if ``url`` is the portal's OIDC callback (``/services/callbacklogin``)."""
     parsed = urlparse(url)
-    return parsed.netloc == urlparse(BASE_URL).netloc and parsed.path.startswith(
-        CALLBACK_LOGIN_PATH
-    )
+    return parsed.netloc in _PORTAL_HOSTS and parsed.path.startswith(CALLBACK_LOGIN_PATH)
 
 
 class _FormParser(HTMLParser):
